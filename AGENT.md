@@ -54,3 +54,25 @@ h1. Delivery plan
 * Stage 3 - Install (lifecycle)
 * Stage 4 - Controller + configure.tt
 * Stage 5 - tests, build, validation
+
+h1. Testing
+
+Run the test suite against the dev instance:
+
+    KOHA_CONF=/etc/koha/sites/production_fng/koha-conf.xml \
+      PERL5LIB="/usr/share/koha/lib:." \
+      prove t/00-load.t t/db_dependent/01-install.t t/db_dependent/02-deploy.t
+
+The db_dependent tests install/uninstall the plugin and reset its deployed
+reports (they delete reports that have the plugin's names and a NULL
+borrowernumber). Re-install afterwards with
+`install_plugins.pl --include Koha::Plugin::Fi::Hypernova::SimpleStatistics` if
+you want the plugin left deployed.
+
+h1. Building
+
+    ./build.sh
+
+This produces koha-plugin-simple-statistics-<version>.kpz (a zip of the Koha/
+directory). Note: build.sh uses `python3 -m zipfile` since the `zip` command is
+not installed on the dev server.
