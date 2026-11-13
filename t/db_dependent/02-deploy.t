@@ -29,6 +29,8 @@ my @report_names = (
     'Viimeisimmät aktiiviset asiakkaat',
     'Kaikki niteiden huomautukset',
     'MARC-tietojen huomautukset',
+    'Viestit, joiden lähetys on epäonnistunut',
+    'Asiakkaiden tietojenkäsittelyn suostumukset',
 );
 my $placeholders = join ',', map {'?'} @report_names;
 
@@ -46,8 +48,8 @@ my $plugin = Koha::Plugin::Fi::Hypernova::SimpleStatistics->new();
 ok( $plugin->retrieve_data('__INSTALLED__'), 'plugin installed' );
 
 my $reports = Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::list_reports($plugin);
-is( scalar(@$reports), 4, 'four reports listed' );
-is( ( grep { $_->{status} eq 'deployed' } @$reports ), 4, 'all reports deployed after install' );
+is( scalar(@$reports), 6, 'six reports listed' );
+is( ( grep { $_->{status} eq 'deployed' } @$reports ), 6, 'all reports deployed after install' );
 
 # --- Masking: deleting a report from saved_sql marks it masked ---
 my ($first) = grep { $_->{code} eq 'message-queue' } @$reports;

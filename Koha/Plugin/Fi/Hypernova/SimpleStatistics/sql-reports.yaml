@@ -90,3 +90,33 @@ reports:
         ExtractValue(metadata,'//datafield[@tag="500"]/subfield[@code="a"]') != '' OR
         ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code="a"]') != '' OR
         ExtractValue(metadata,'//datafield[@tag="583"]/subfield[@code="a"]') != ''
+
+  - code: failed-messages
+    name: "Failed messages"
+    description: "Messages in the message queue whose sending failed."
+    group: ""
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Viestit, joiden lähetys on epäonnistunut"
+        description: "Viestijonon viestit, joiden lähetys on epäonnistunut."
+    sql: |
+      SELECT *
+      FROM message_queue
+      WHERE status = 'failed'
+      ORDER BY message_id DESC
+
+  - code: patron-consents
+    name: "Patron data processing consents"
+    description: "Patrons' data processing consents, refusals first and newest to oldest."
+    group: ""
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Asiakkaiden tietojenkäsittelyn suostumukset"
+        description: "Järjestyksessä kieltäytymiset ensin, ja sen jälkeen suostumukset. Uusimmasta vanhimpaan."
+    sql: |
+      SELECT * FROM patron_consent
+      ORDER BY patron_consent.refused_on DESC, patron_consent.given_on DESC
