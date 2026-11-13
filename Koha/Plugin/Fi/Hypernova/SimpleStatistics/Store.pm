@@ -38,6 +38,10 @@ Model/service layer for the Simple Statistics plugin: loads the bundled report
 definitions, tracks the code -> saved_sql.id mapping, deploys reports and
 detects masked reports.
 
+All functions are plain service functions taking the plugin object as their
+first argument. Cross-calls within this package use the fully-qualified
+package name because the plugin object itself does not inherit these methods.
+
 =cut
 
 =head2 mapping_table
@@ -60,7 +64,7 @@ Create/drop the code -> saved_sql.id mapping table.
 sub create_mapping_table {
     my ($self) = @_;
     my $dbh   = C4::Context->dbh;
-    my $table = $self->mapping_table;
+    my $table = mapping_table($self);
     $dbh->do(qq{
         CREATE TABLE IF NOT EXISTS `$table` (
             `code`         varchar(255) NOT NULL,
@@ -76,7 +80,7 @@ sub create_mapping_table {
 sub drop_mapping_table {
     my ($self) = @_;
     my $dbh   = C4::Context->dbh;
-    my $table = $self->mapping_table;
+    my $table = mapping_table($self);
     $dbh->do("DROP TABLE IF EXISTS `$table`");
 }
 
@@ -131,7 +135,7 @@ Return a single report definition by code, or undef.
 
 sub get_definition {
     my ( $self, $code ) = @_;
-    my $defs = $self->load_definitions;
+    my $defs = load_definitions($self);
     for my $def (@$defs) {
         return $def if $def->{code} eq $code;
     }
@@ -147,7 +151,7 @@ Return a hashref { code => { saved_sql_id, deployed_on } }.
 sub get_mappings {
     my ($self) = @_;
     my $dbh   = C4::Context->dbh;
-    my $table = $self->mapping_table;
+    my $table = mapping_table($self);
     my $rows  = $dbh->selectall_arrayref(
         "SELECT code, saved_sql_id, deployed_on FROM `$table`",
         { Slice => {} }
@@ -166,7 +170,7 @@ Record (or update) the saved_sql.id for a report code.
 sub set_mapping {
     my ( $self, $code, $saved_sql_id ) = @_;
     my $dbh   = C4::Context->dbh;
-    my $table = $self->mapping_table;
+    my $table = mapping_table($self);
     $dbh->do(
         "REPLACE INTO `$table` (code, saved_sql_id) VALUES (?,?)",
         undef, $code, $saved_sql_id
@@ -235,18 +239,18 @@ already deployed, returns the existing id without creating a duplicate.
 sub deploy_report {
     my ( $self, $code, $borrowernumber ) = @_;
 
-    my $def = $self->get_definition($code)
+    my $def = get_definition( $self, $code )
         or die "Unknown report code: $code\n";
 
     # Idempotent: if this code is already deployed (its saved_sql row still
     # exists), return the existing id instead of creating a duplicate.
-    my $mappings = $self->get_mappings;
+    my $mappings = get_mappings($self);
     if ( exists $mappings->{$code} ) {
         my $existing_id = $mappings->{$code}{saved_sql_id};
         return $existing_id if Koha::Reports->find($existing_id);
     }
 
-    $self->seed_report_av( $def->{group}, $def->{subgroup} );
+    seed_report_av( $self, $def->{group}, $def->{subgroup} );
 
     my $id = save_report(
         {
@@ -261,7 +265,7 @@ sub deploy_report {
         }
     );
 
-    $self->set_mapping( $code, $id );
+    set_mapping( $self, $code, $id );
 
     return $id;
 }
@@ -277,14 +281,14 @@ deployed reports.
 sub deploy_available {
     my ( $self, $borrowernumber ) = @_;
 
-    my $defs     = $self->load_definitions;
-    my $mappings = $self->get_mappings;
+    my $defs     = load_definitions($self);
+    my $mappings = get_mappings($self);
 
     my @deployed;
     for my $def (@$defs) {
         next if $def->{public};                     # never auto-deploy public reports
         next if exists $mappings->{ $def->{code} }; # already seen (deployed or masked)
-        my $id = $self->deploy_report( $def->{code}, $borrowernumber );
+        my $id = deploy_report( $self, $def->{code}, $borrowernumber );
         push @deployed, { code => $def->{code}, saved_sql_id => $id };
     }
 
@@ -310,8 +314,8 @@ Return the full list of reports with their deployment status. Status is one of:
 sub list_reports {
     my ($self) = @_;
 
-    my $defs     = $self->load_definitions;
-    my $mappings = $self->get_mappings;
+    my $defs     = load_definitions($self);
+    my $mappings = get_mappings($self);
 
     my @reports;
     for my $def (@$defs) {
