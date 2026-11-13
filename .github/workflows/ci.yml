@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Validate report definitions YAML
+        run: |
+          python3 -c "import yaml; d=yaml.safe_load(open('Koha/Plugin/Fi/Hypernova/SimpleStatistics/sql-reports.yaml')); assert isinstance(d.get('reports'), list); print('YAML OK')"
+      - name: Build kpz
+        run: ./build.sh
+      - name: Verify kpz contents
+        run: |
+          python3 - <<'PY'
+          import zipfile, glob
+          z = zipfile.ZipFile(glob.glob('koha-plugin-simple-statistics-*.kpz')[0])
+          names = z.namelist()
+          assert any(n.endswith('SimpleStatistics.pm') for n in names), 'missing main pm'
+          assert any(n.endswith('sql-reports.yaml') for n in names), 'missing yaml'
+          print('kpz OK')
+          PY

@@ -21,6 +21,9 @@
 # The report is deployed using the default staff interface language: the topmost
 # language of the StaffInterfaceLanguages system preference. Fallback order per
 # report: exact code (fi-FI) -> primary subtag (fi) -> the English name/description.
+#
+# Note: the marc-notes report uses the MySQL/MariaDB ExtractValue() XML function;
+# it is MariaDB-specific and does not work on stock MySQL 8.0+.
 
 reports:
   - code: message-queue

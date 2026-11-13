@@ -64,6 +64,11 @@ my ($method_count) = $dbh->selectrow_array(
 );
 ok( $method_count, 'configure method registered' );
 
+my ($perm_count) = $dbh->selectrow_array(
+    "SELECT COUNT(*) FROM permissions WHERE code = 'manage_simple_statistics'"
+);
+ok( $perm_count, 'manage_simple_statistics permission seeded' );
+
 # --- Upgrade must not duplicate reports ---
 $plugin->store_data( { '__INSTALLED_VERSION__' => '0.0.0' } );
 $plugin = Koha::Plugin::Fi::Hypernova::SimpleStatistics->new();
@@ -90,6 +95,11 @@ my ($method_after) = $dbh->selectrow_array(
     undef, $class
 );
 ok( !$method_after, 'methods removed on uninstall' );
+
+my ($perm_after) = $dbh->selectrow_array(
+    "SELECT COUNT(*) FROM permissions WHERE code = 'manage_simple_statistics'"
+);
+ok( !$perm_after, 'manage_simple_statistics permission removed on uninstall' );
 
 my $remaining = $dbh->selectall_arrayref(
     "SELECT id FROM saved_sql WHERE report_name IN ($placeholders) AND borrowernumber IS NULL",

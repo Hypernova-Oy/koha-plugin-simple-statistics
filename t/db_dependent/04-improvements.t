@@ -42,6 +42,7 @@ ok( !$ok, 'non-SELECT is rejected' );
 {
     package FakePlugin;
     sub get_qualified_table_name { my ( $self, $t ) = @_; return "ss_imptest_$t"; }
+    sub retrieve_data { my ( $self, $key ) = @_; return $key eq 'report_owner' ? 42 : undef; }
     sub mbf_read { return <<'YAML';
 reports:
   - code: demo
@@ -67,6 +68,8 @@ $drop_table->($fake);
 $create_table->($fake);
 my $id = $deploy_report->( $fake, 'demo', undef );
 ok( $id, 'deployed demo report' );
+my ($owner_bn) = $dbh->selectrow_array( "SELECT borrowernumber FROM saved_sql WHERE id = ?", undef, $id );
+is( $owner_bn, 42, 'report_owner used for auto-deploy ownership' );
 
 my ($gcount) = $dbh->selectrow_array(
     "SELECT COUNT(*) FROM authorised_values WHERE category = 'REPORT_GROUP' AND authorised_value = 'TestGroup'");
@@ -101,6 +104,26 @@ my ($ghost) = $dbh->selectrow_array( "SELECT COUNT(*) FROM ss_imptest_report_map
 is( $ghost, 0, 'ghost mapping gone' );
 my ($demo) = $dbh->selectrow_array( "SELECT COUNT(*) FROM ss_imptest_report_mappings WHERE code = 'demo'" );
 is( $demo, 1, 'demo mapping kept' );
+
+# --- unknown-key warning ---
+my $warnings = q{};
+local $SIG{__WARN__} = sub { $warnings .= $_[0] };
+{
+    package BadPlugin;
+    sub get_qualified_table_name { my ( $self, $t ) = @_; return "ss_badtest_$t"; }
+    sub mbf_read { return <<'YAML';
+reports:
+  - code: demo
+    name: "Demo"
+    sql: "SELECT 1"
+    bogus_key: "x"
+YAML
+    }
+    package main;
+}
+my $bad = bless {}, 'BadPlugin';
+Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::load_definitions($bad);
+like( $warnings, qr/bogus_key/, 'unknown key warns' );
 
 # --- cleanup ---
 $dbh->do( "DELETE FROM saved_sql WHERE id = ?", undef, $id );

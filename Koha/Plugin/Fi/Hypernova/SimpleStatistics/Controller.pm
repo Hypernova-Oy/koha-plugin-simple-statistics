@@ -22,6 +22,7 @@ use Modern::Perl;
 use C4::Context;
 use Koha::Logger;
 use Koha::Token;
+use C4::Auth qw(haspermission);
 
 use Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store;
 
@@ -57,6 +58,11 @@ sub configure {
             }
         );
         die "Wrong CSRF token\n" unless $ok;
+
+        my $userenv = C4::Context->userenv;
+        my $userid  = $userenv ? $userenv->{userid} : undef;
+        die "Insufficient permissions\n"
+            unless $userid && haspermission( $userid, { reports => 'manage_simple_statistics' } );
 
         my $code  = $cgi->param('code') // q{};
         my $done  = 0;

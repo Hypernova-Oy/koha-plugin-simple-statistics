@@ -36,6 +36,7 @@ sub install {
 
     eval {
         Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::create_mapping_table($self);
+        _seed_permissions( C4::Context->dbh );
 
         my $deployed =
             Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::deploy_available( $self, undef );
@@ -62,6 +63,7 @@ sub upgrade {
 
     eval {
         Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::create_mapping_table($self);
+        _seed_permissions( C4::Context->dbh );
 
         my $deployed =
             Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::deploy_available( $self, undef );
@@ -88,8 +90,8 @@ sub uninstall {
 
     eval {
         Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::drop_mapping_table($self);
-
         my $dbh = C4::Context->dbh;
+        $dbh->do( qq{DELETE FROM permissions WHERE code = 'manage_simple_statistics'} );
         $dbh->do( "DELETE FROM plugin_data WHERE plugin_class = ?", undef, ( $self->{class} ) );
         Koha::Plugins::Methods->search( { plugin_class => $self->{class} } )->delete();
     };
@@ -99,6 +101,14 @@ sub uninstall {
     }
 
     return 1;
+}
+
+sub _seed_permissions {
+    my ($dbh) = @_;
+    $dbh->do(q{
+        INSERT IGNORE INTO permissions (module_bit, code, description)
+        SELECT bit, ?, ? FROM userflags WHERE flag = 'reports'
+    }, undef, 'manage_simple_statistics', 'Simple Statistics: deploy and update SQL reports');
 }
 
 sub _register_methods {

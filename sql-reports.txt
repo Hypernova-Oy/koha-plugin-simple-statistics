@@ -92,3 +92,87 @@ ORDER BY
 
 -----
 
+Vuosihankinta
+
+Vuosittain hankintaan käytetty rahamäärä toimittajittain.
+
+SELECT booksellerid, SUM(IF(price, price, replacementprice)) AS 'Summa', COUNT(*) AS 'Kappaletta'
+FROM items
+WHERE dateaccessioned BETWEEN <<Alkupvm|date>>
+  AND <<Loppupvm|date>>
+GROUP BY booksellerid
+
+------
+
+Avoimet tilaukset
+
+
+
+SELECT
+  itemnumber,
+  barcode,
+  booksellerid,
+  biblio.title,^M\n  biblio.author,^M\n  TIMESTAMPDIFF(DAY, dateaccessioned, NOW()) as "Tilauksessa päivää"^M\nFROM items^M\nLEFT JOIN biblio ON biblio.biblionumber = items.biblionumber^M\nWHERE^M\n  notforloan = '-1'^M\nORDER BY^M\n  TIMESTAMPDIFF(DAY, dateaccessioned, NOW()) DESC
+
+-----
+
+Onnistuneet ja epäonnistuneet kirjautumiset
+
+
+
+SELECT *^M\nFROM action_logs^M\nWHERE^M\n  module='AUTH' AND^M\n  timestamp BETWEEN <<from|date>> AND CONCAT(<<to|date>>, ' ', "23:59:59")^M\nORDER BY timestamp DESC
+
+-----
+
+Käyttäjät joita ei ole nähty n-päivään
+
+
+
+SELECT email FROM borrowers WHERE TIMESTAMPDIFF(DAY, lastseen, NOW()) >= <<Moneenko päivään?>>^M\n
+
+-----
+
+Peruutetut varaukset
+
+
+
+SELECT * FROM old_reserves WHERE cancellationdate IS NOT NULL ORDER BY cancellationdate DESC
+
+-----
+Virkailijaoikeudet
+
+Tarkasta keillä kaikilla on virkailijaoikeuksia. TODO: Pitäisi saada flags listattua selkokielisesti ja yksittäiset käyttöoikeudet listattua.
+
+SELECT ^M\n    b.borrowernumber,^M\n    b.cardnumber,^M\n    b.surname,^M\n    b.firstname,^M\n    b.categorycode,^M\n    b.branchcode,^M\n    up.module_bit,^M\n    up.code AS permission_code,^M\n    p.description AS permission_description^M\nFROM borrowers b^M\n    JOIN user_permissions up ON b.borrowernumber = up.borrowernumber^M\n    JOIN permissions p ON up.code = p.code^M\nORDER BY b.surname, b.firstname
+
+----
+
+Lainaraportti
+
+SELECT^M\n  'DATA' AS rivityyppi,^M\n  br.borrowernumber,^M\n  br.cardnumber                                  AS korttinumero,^M\n  CONCAT(br.surname, ', ', br.firstname)         AS asiakas,^M\n  i.issue_id,^M\n  i.branchcode                                   AS lainauskirjasto,^M\n  it.homebranch                                  AS kotikirjasto,^M\n  it.holdingbranch                               AS hyllytyskirjasto,^M\n  i.issuedate                                    AS lainattu,^M\n  i.date_due                                     AS eräpäivä,^M\n  CASE WHEN i.date_due < CURDATE() THEN 'overdue' ELSE 'on time' END AS tila,^M\n  DATEDIFF(CURDATE(), i.issuedate) + 1           AS paivia_lainassa,^M\n^M\n  it.itemnumber,^M\n  it.barcode,^M\n  it.itemcallnumber                              AS hyllypaikka,^M\n  it.itype                                       AS aineistolaji_koodi,^M\n  t.description                                  AS aineistolaji,^M\n  b.biblionumber,^M\n  b.title                                        AS nimeke,^M\n  b.author                                       AS tekijä,^M\n^M\n  NULL                                           AS total_lainassa,^M\n  NULL                                           AS aikarajauksessa_lainattu^M\n^M\nFROM issues i^M\nJOIN items    it ON it.itemnumber      = i.itemnumber^M\nJOIN biblio    b ON b.biblionumber     = it.biblionumber^M\nJOIN borrowers br ON br.borrowernumber = i.borrowernumber^M\nLEFT JOIN itemtypes t ON t.itemtype    = it.itype^M\n^M\nWHERE i.issuedate >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n  AND i.issuedate <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n^M\nUNION ALL^M\n^M\nSELECT^M\n  'YHTEENSÄ' AS rivityyppi,^^M\n  NULL AS borrowernumber,^M\n  NULL AS korttinumero,^M\n  NULL AS asiakas,^M\n  NULL AS issue_id,^M\n  NULL AS lainauskirjasto,^M\n  NULL AS kotikirjasto,^M\n  NULL AS hyllytyskirjasto,^M\n  NULL AS lainattu,^M\n  NULL AS eräpäivä,^^M\n  NULL AS tila,^M\n  NULL AS paivia_lainassa,^M\n  NULL AS itemnumber,^M\n  NULL AS barcode,^M\n  NULL AS hyllypaikka,^M\n  NULL AS aineistolaji_koodi,^M\n  NULL AS aineistolaji,^M\n  NULL AS biblionumber,^M\n  NULL AS nimeke,^M\n  NULL AS tekijä,^M\n  COUNT(*) AS total_lainassa,^M\n  SUM(^M\n    CASE WHEN i.issuedate >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n          AND i.issuedate <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n         THEN 1 ELSE 0 END^M\n  ) AS aikarajauksessa_lainattu^M\n^M\nFROM issues i^M\nJOIN items    it ON it.itemnumber      = i.itemnumber^M\nJOIN biblio    b ON b.biblionumber     = it.biblionumber^M\nJOIN borrowers br ON br.borrowernumber = i.borrowernumber^M\nLEFT JOIN itemtypes t ON t.itemtype    = it.itype^M\n^M\nORDER BY rivityyppi, lainattu DESC, eräpäivä, barcode
+
+----
+
+Kartunta ja poistot
+
+
+
+SELECT^M\n  'DATA' AS rivityyppi,^M\n  'KARTUNTA' AS tapahtuma,^M\n  b.biblionumber,^M\n  b.title                                   AS nimeke,^M\n  i.itype                                   AS aineistolaji_koodi,^M\n  t.description                             AS aineistolaji,^M\n  i.dateaccessioned                         AS kartunta_aika,^M\n  NULL                                      AS poisto_aika,^M\n  NULL                                      AS kartunta_yhteensa,^M\n  NULL                                      AS poistot_yhteensa^M\nFROM items i^M\nJOIN biblio b       ON b.biblionumber = i.biblionumber^M\nLEFT JOIN itemtypes t ON t.itemtype   = i.itype^M\nWHERE i.dateaccessioned >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n  AND i.dateaccessioned <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n^M\nUNION ALL^M\n^M\nSELECT^M\n  'DATA' AS rivityyppi,^M\n  'POISTO' AS tapahtuma,^M\n  di.biblionumber,^M\n  b.title                                   AS nimeke,^M\n  di.itype                                  AS aineistolaji_koodi,^M\n  t.description                             AS aineistolaji,^M\n  di.dateaccessioned                        AS kartunta_aika,^M\n  di.`timestamp`                            AS poisto_aika,^M\n  NULL                                      AS kartunta_yhteensa,^M\n  NULL                                      AS poistot_yhteensa^M\nFROM deleteditems di^M\nLEFT JOIN biblio b     ON b.biblionumber = di.biblionumber^M\nLEFT JOIN itemtypes t  ON t.itemtype     = di.itype^M\nWHERE di.`timestamp` >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n  AND di.`timestamp` <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n^M\nUNION ALL^M\n^M\nSELECT^M\n  'YHTEENVETO' AS rivityyppi,^M\n  NULL         AS tapahtuma,^M\n  NULL         AS biblionumber,^M\n  NULL         AS nimeke,^M\n  NULL         AS aineistolaji_koodi,^M\n  NULL         AS aineistolaji,^M\n  NULL         AS kartunta_aika,^M\n  NULL         AS poisto_aika,^M\n  /* Kartunnat valitulla aikavälillä */^M\n  (SELECT COUNT(*)^M\n     FROM items i_sub^M\n    WHERE i_sub.dateaccessioned >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n      AND i_sub.dateaccessioned <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n  ) AS kartunta_yhteensa,^M\n  /* Poistot valitulla aikavälillä */^M\n  (SELECT COUNT(*)^M\n     FROM deleteditems di_sub^M\n    WHERE di_sub.`timestamp` >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n      AND di_sub.`timestamp` <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n  ) AS poistot_yhteensa^M\n^M\nORDER BY aineistolaji_koodi, rivityyppi, tapahtuma, kartunta_aika, poisto_aika, nimeke
+
+-----
+
+Uusinnat
+
+
+
+SELECT^M\n  'DATA' AS rivityyppi,^M\n  s.datetime                                 AS uusittu,^M\n  s.branch                                   AS kirjasto,^M\n  br.borrowernumber,^M\n  br.cardnumber                              AS korttinumero,^M\n  CONCAT(br.surname, ', ', br.firstname)     AS asiakas,^^M\n  it.itemnumber,^M\n  it.barcode,^M\n  it.itemcallnumber                          AS hyllypaikka,^M\n  it.itype                                   AS aineistolaji_koodi,^M\n  t.description                              AS aineistolaji,^M\n  b.biblionumber,^M\n  b.title                                    AS nimeke,^M\n  b.author                                   AS tekijä,^M\n  NULL                                       AS uusintojen_maara^M\nFROM statistics s^M\nJOIN borrowers br  ON br.borrowernumber = s.borrowernumber^M\nLEFT JOIN items it ON it.itemnumber     = s.itemnumber^M\nLEFT JOIN biblio b ON b.biblionumber    = it.biblionumber^M\nLEFT JOIN itemtypes t ON t.itemtype     = it.itype^M\nWHERE s.type = 'renew'^M\n  AND s.datetime >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n  AND s.datetime <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n^M\nUNION ALL^M\n^M\nSELECT^M\n  'YHTEENSÄ' AS rivityyppi,^M\n  NULL AS uusittu,^M\n  NULL AS kirjasto,^M\n  NULL AS borrowernumber,^M\n  NULL AS korttinumero,^M\n  NULL AS asiakas,^M\n  NULL AS itemnumber,^M\n  NULL AS barcode,^M\n  NULL AS hyllypaikka,^M\n  NULL AS aineistolaji_koodi,^M\n  NULL AS aineistolaji,^M\n  NULL AS biblionumber,^M\n  NULL AS nimeke,^M\n  NULL AS tekijä,^M\n  COUNT(*) AS uusintojen_maara^M\nFROM statistics s^M\nWHERE s.type = 'renew'^M\n  AND s.datetime >= CAST(<<Alkupäivä|date>> AS DATETIME)^M\n  AND s.datetime <  (CAST(<<Loppupäivä|date>> AS DATETIME) + INTERVAL 1 DAY)^M\n^M\nORDER BY rivityyppi, uusittu, kirjasto, barcode
+
+-----
+
+Lainatapahtumat (lainat+palautukset) valitulla aikavälillä
+
+
+
+SELECT^M\n    DATE_FORMAT(s.datetime, '%d.%m.%Y %H:%i:%s')                AS Kellonaika,^M\n    CASE s.type^M\n        WHEN 'issue'  THEN 'Laina'^M\n        WHEN 'return' THEN 'Palautus'^M\n    END                                                         AS Tapahtuma,^M\n    CONCAT_WS(', ', NULLIF(COALESCE(bo.surname, dbo.surname), ''),^M\n                    NULLIF(COALESCE(bo.firstname, dbo.firstname), '')) AS Asiakas,^M\n    COALESCE(i.barcode, di.barcode)                             AS Viivakoodi,^M\n    CONCAT_WS(' : ', NULLIF(b.title, ''), NULLIF(b.subtitle, '')) AS Nimeke^M\nFROM statistics s^M\n    LEFT JOIN borrowers bo         ON bo.borrowernumber  = s.borrowernumber^M\n    LEFT JOIN deletedborrowers dbo ON dbo.borrowernumber = s.borrowernumber^M\n    LEFT JOIN items i              ON i.itemnumber       = s.itemnumber^M\n    LEFT JOIN deleteditems di      ON di.itemnumber      = s.itemnumber^M\n    LEFT JOIN biblio b             ON b.biblionumber     = COALESCE(i.biblionumber, di.biblionumber)^M\nWHERE s.type IN ('issue', 'return')^M\n  AND s.datetime >= CONCAT(<<Alkupaiva|date>>, ' 00:00:00')^M\n  AND s.datetime <= CONCAT(<<Loppupaiva|date>>, ' 23:59:59')^M\nORDER BY s.datetime DESC, s.type, Viivakoodi
+
+-----

@@ -133,6 +133,11 @@ sub load_definitions {
         die "Invalid sql-reports.yaml: report '$code' needs 'sql'\n"
             unless defined $r->{sql} && $r->{sql} =~ /\S/;
 
+        for my $key ( keys %$r ) {
+            warn "sql-reports.yaml: unknown key '$key' for report '$code'\n"
+                unless $key =~ /^(?:code|name|description|group|subgroup|public|sql|translations)$/;
+        }
+
         push @defs, {
             code         => $code,
             name         => $r->{name} // $code,
@@ -369,6 +374,11 @@ sub deploy_report {
 
     my $def = get_definition( $self, $code )
         or die "Unknown report code: $code\n";
+
+    unless ( defined $borrowernumber && $borrowernumber ne q{} ) {
+        my $owner = $self->can('retrieve_data') ? $self->retrieve_data('report_owner') : undef;
+        $borrowernumber = $owner if defined $owner && $owner ne q{};
+    }
 
     # Idempotent: if this code is already deployed (its saved_sql row still
     # exists), return the existing id instead of creating a duplicate.

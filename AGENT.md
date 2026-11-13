@@ -76,3 +76,11 @@ h1. Building
 This produces koha-plugin-simple-statistics-<version>.kpz (a zip of the Koha/
 directory). Note: build.sh uses `python3 -m zipfile` since the `zip` command is
 not installed on the dev server.
+
+h1. Test isolation note
+
+The db_dependent tests run against the instance's own database and reset the
+plugin's state (uninstall, reinstall, report cleanup). They are intentionally
+not wrapped in a DB transaction: MySQL/MariaDB implicitly commits DDL
+(CREATE/DROP TABLE for the mapping table), which would break rollback. Run
+them on a development instance, not a live production database.

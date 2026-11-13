@@ -16,6 +16,19 @@ rm -rf dist
 mkdir -p dist
 cp -r Koha dist/.
 cd dist
-python3 -m zipfile -c ../${RELEASE_FILE} Koha
+# Build a reproducible zip (fixed timestamps) using Python's zipfile.
+python3 - <<PYEOF
+import zipfile, os
+out = '../${RELEASE_FILE}'
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk('Koha'):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            info = zipfile.ZipInfo(path, date_time=(2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with open(path, 'rb') as fh:
+                z.writestr(info, fh.read())
+PYEOF
 cd ..
 rm -rf dist
