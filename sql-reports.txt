@@ -1,0 +1,46 @@
+-----
+Viestijono
+
+Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle
+
+SELECT * FROM message_queue
+ORDER BY time_queued DESC
+
+-----
+Viimeisimmät aktiiviset asiakkaat
+
+Ketkä ovat viimeksi asioineet "lastseen"-järjestelmäasetuksen puitteissa.
+
+SELECT borrowernumber, firstname, surname, categorycode, lastseen
+FROM borrowers
+WHERE lastseen IS NOT NULL
+ORDER BY lastseen DESC
+
+-----
+Kaikki niteiden huomautukset
+
+Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja
+
+SELECT itemnumber, itemnotes, itemnotes_nonpublic
+FROM items
+WHERE itemnotes IS NOT NULL
+  OR itemnotes_nonpublic != ""
+
+-----
+MARC-tietojen huomautukset
+
+Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja.
+
+SELECT
+  biblionumber,
+  ExtractValue(metadata,'//datafield[@tag="500"]/subfield[@code>="a"]') AS 500a,
+  ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code>="a"]') AS 505a,
+  ExtractValue(metadata,'//datafield[@tag="520"]/subfield[@code>="a"]') AS 583a
+FROM biblio_metadata
+WHERE
+  ExtractValue(metadata,'//datafield[@tag="500"]/subfield[@code>="a"]') != "" OR
+  ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code>="a"]') != "" OR
+  ExtractValue(metadata,'//datafield[@tag="583"]/subfield[@code>="a"]') != ""
+
+-----
+
