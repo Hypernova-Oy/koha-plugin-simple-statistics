@@ -336,6 +336,8 @@ sub list_reports {
             saved_sql_id => $saved_sql_id,
             deployed_on  => $deployed_on,
             status       => $status,
+            deployed     => ( $status eq q{deployed} ? 1 : 0 ),
+            masked       => ( $status eq q{masked}   ? 1 : 0 ),
         };
     }
 

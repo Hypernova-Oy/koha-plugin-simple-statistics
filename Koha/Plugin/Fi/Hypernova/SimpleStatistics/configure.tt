@@ -1,0 +1,54 @@
+[% WRAPPER 'wrapper-staff-tool-plugin.inc' method='configure' plugin_title='Simple Statistics: SQL reports' %]
+
+[% IF error %]
+<div class="alert alert-warning">[% error | html %]</div>
+[% END %]
+
+<table id="simplestatistics-reports" class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Group</th>
+            <th>Subgroup</th>
+            <th>Public</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    [% FOREACH r IN reports %]
+        <tr[% UNLESS r.deployed %] style="background-color:#f2dede;"[% END %]>
+            <td>
+                [% r.name | html %]
+                [% IF r.masked %] <span class="label label-default">masked</span>[% END %]
+            </td>
+            <td>[% r.description | html %]</td>
+            <td>[% r.group | html %]</td>
+            <td>[% r.subgroup | html %]</td>
+            <td>[% IF r.public %]Yes[% ELSE %]No[% END %]</td>
+            <td>
+                [% IF r.deployed %]
+                    <span class="label label-success">Deployed</span>
+                [% ELSE %]
+                <form method="post" style="display:inline">
+                    <input type="hidden" name="class" value="[% CLASS | html %]"/>
+                    <input type="hidden" name="method" value="[% METHOD | html %]"/>
+                    <input type="hidden" name="deploy" value="1"/>
+                    <input type="hidden" name="code" value="[% r.code | html %]"/>
+                    [% INCLUDE 'csrf-token.inc' %]
+                    <input type="submit" class="btn btn-default btn-sm" value="Deploy"/>
+                </form>
+                [% END %]
+            </td>
+        </tr>
+    [% END %]
+    </tbody>
+</table>
+
+<p class="hint">
+    Rows highlighted in red are not deployed in Koha's SQL reports
+    (for example after a librarian deleted them). Public reports are never
+    deployed automatically &mdash; use the Deploy button.
+</p>
+
+[% END %]
