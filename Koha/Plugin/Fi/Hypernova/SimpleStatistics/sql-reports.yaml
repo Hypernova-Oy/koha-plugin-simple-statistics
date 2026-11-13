@@ -1,0 +1,65 @@
+---
+# SQL report definitions for koha-plugin-simple-statistics.
+#
+# Each entry:
+#   code        - stable unique identifier, used to track the saved_sql.id mapping
+#   name        - report name (saved_sql.report_name)
+#   description - report notes/description (saved_sql.notes)
+#   group       - report group (saved_sql.report_group); optional
+#   subgroup    - report subgroup (saved_sql.report_subgroup); optional
+#   public      - whether the report is public (saved_sql.public).
+#                 Public reports are NEVER auto-deployed.
+#   sql         - the SQL (saved_sql.savedsql)
+
+reports:
+  - code: message-queue
+    name: "Viestijono"
+    description: "Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle"
+    group: ""
+    subgroup: ""
+    public: false
+    sql: |
+      SELECT * FROM message_queue
+      ORDER BY time_queued DESC
+
+  - code: last-active-borrowers
+    name: "Viimeisimmät aktiiviset asiakkaat"
+    description: "Ketkä ovat viimeksi asioineet \"lastseen\"-järjestelmäasetuksen puitteissa."
+    group: ""
+    subgroup: ""
+    public: false
+    sql: |
+      SELECT borrowernumber, firstname, surname, categorycode, lastseen
+      FROM borrowers
+      WHERE lastseen IS NOT NULL
+      ORDER BY lastseen DESC
+
+  - code: item-notes
+    name: "Kaikki niteiden huomautukset"
+    description: "Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja"
+    group: ""
+    subgroup: ""
+    public: false
+    sql: |
+      SELECT itemnumber, itemnotes, itemnotes_nonpublic
+      FROM items
+      WHERE itemnotes IS NOT NULL
+        OR itemnotes_nonpublic != ''
+
+  - code: marc-notes
+    name: "MARC-tietojen huomautukset"
+    description: "Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja."
+    group: ""
+    subgroup: ""
+    public: false
+    sql: |
+      SELECT
+        biblionumber,
+        ExtractValue(metadata,'//datafield[@tag="500"]/subfield[@code="a"]') AS 500a,
+        ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code="a"]') AS 505a,
+        ExtractValue(metadata,'//datafield[@tag="583"]/subfield[@code="a"]') AS 583a
+      FROM biblio_metadata
+      WHERE
+        ExtractValue(metadata,'//datafield[@tag="500"]/subfield[@code="a"]') != '' OR
+        ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code="a"]') != '' OR
+        ExtractValue(metadata,'//datafield[@tag="583"]/subfield[@code="a"]') != ''
