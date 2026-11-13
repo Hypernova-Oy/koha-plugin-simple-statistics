@@ -27,8 +27,17 @@ use Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store;
 
 =head2 configure
 
-Renders the report table. Handles a POST deploy action (CSRF-protected) that
-un-masks and deploys a single report, then redirects back.
+Renders the report table. Handles CSRF-protected POST actions:
+
+=over 4
+
+=item * deploy     - deploy a single report (un-mask)
+
+=item * deploy_all - deploy every available (never-deployed, non-public) report
+
+=item * update     - overwrite a deployed report with the plugin's current version
+
+=back
 
 =cut
 
@@ -40,7 +49,7 @@ sub configure {
     my $borrowernumber = $userenv ? $userenv->{'number'} : undef;
 
     my $error;
-    if ( $cgi->param('deploy') ) {
+    if ( $cgi->param('deploy') || $cgi->param('deploy_all') || $cgi->param('update') ) {
         my $ok = Koha::Token->new->check_csrf(
             {
                 session_id => scalar $cgi->cookie('CGISESSID'),
@@ -49,23 +58,60 @@ sub configure {
         );
         die "Wrong CSRF token\n" unless $ok;
 
-        my $code     = $cgi->param('code') // q{};
-        my $deployed = eval {
-            Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::deploy_report(
-                $self, $code, $borrowernumber );
-            1;
-        };
-        if ($deployed) {
+        my $code  = $cgi->param('code') // q{};
+        my $done  = 0;
+        my $label = 'deploy';
+
+        if ( $cgi->param('deploy_all') ) {
+            $label = 'deploy_all';
+            my $ok_action = eval {
+                Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::deploy_available(
+                    $self, $borrowernumber );
+                1;
+            };
+            if ($ok_action) {
+                $done = 1;
+            }
+            else {
+                $error = $@ // 'Unknown error';
+            }
+        }
+        elsif ( $cgi->param('update') ) {
+            $label = 'update';
+            my $ok_action = eval {
+                Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::update_report(
+                    $self, $code, $borrowernumber );
+                1;
+            };
+            if ($ok_action) {
+                $done = 1;
+            }
+            else {
+                $error = $@ // 'Unknown error';
+            }
+        }
+        else {
+            my $ok_action = eval {
+                Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::deploy_report(
+                    $self, $code, $borrowernumber );
+                1;
+            };
+            if ($ok_action) {
+                $done = 1;
+            }
+            else {
+                $error = $@ // 'Unknown error';
+            }
+        }
+
+        if ($done) {
             print $cgi->redirect(
                 '/cgi-bin/koha/plugins/run.pl?class=Koha::Plugin::Fi::Hypernova::SimpleStatistics&method=configure'
             );
             return;
         }
-        else {
-            $error = $@ // 'Unknown error';
-            Koha::Logger->get
-                ->error("koha-plugin-simple-statistics: deploy '$code' failed: $error");
-        }
+        Koha::Logger->get
+            ->error("koha-plugin-simple-statistics: $label '$code' failed: $error");
     }
 
     my $reports = eval {
@@ -80,11 +126,15 @@ sub configure {
         Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::default_language($self);
     };
 
+    my $has_available =
+        ( grep { $_->{status} eq 'available' && !$_->{public} } @$reports ) ? 1 : 0;
+
     my $template = $self->get_template( { file => 'configure.tt' } );
     $template->param(
         reports          => $reports,
         error            => $error,
         default_language => $default_language,
+        has_available    => $has_available,
     );
     $self->output_html( $template->output() );
 }

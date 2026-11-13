@@ -44,6 +44,7 @@ sub install {
                 "koha-plugin-simple-statistics: auto-deployed " . scalar(@$deployed) . " report(s)" );
         }
 
+        Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::prune_mappings($self);
         _register_methods($self);
         _store_last_upgraded($self);
     };
@@ -69,6 +70,7 @@ sub upgrade {
                 "koha-plugin-simple-statistics: auto-deployed " . scalar(@$deployed) . " report(s)" );
         }
 
+        Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::prune_mappings($self);
         _register_methods($self);
         _store_last_upgraded($self);
     };

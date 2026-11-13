@@ -68,4 +68,27 @@ ORDER BY patron_consent.refused_on DESC, patron_consent.given_on DESC
 
 ------
 
+Koha kirjautumiset/istunnot valitulla ajanjaksolla rajapinnasta
+
+
+
+SELECT
+  id as "session id"
+  FROM_UNIXTIME( REGEXP_SUBSTR(a_session, "(?<=\\\\b_SESSION_ATIME: )\\\\d+\\\\b") ) as "last login time",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\bid: )[0-9A-Za-z@._-]+\\\\b") as "username",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\bnumber: )\\\\w+\\\\b") as "borrowernumber",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\bemailaddress: )[0-9A-Za-z@._-]+\\\\b") as "email",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\binterface: )\\\\w+\\\\b") as "interface",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\bsessiontype: )\\\\w+\\\\b") as "sessiontype",
+  REGEXP_SUBSTR(a_session, "(?<=\\\\b_SESSION_REMOTE_ADDR: )[0-9.:a-z]+\\\\b") as "ip"
+FROM sessions
+WHERE
+  DATE(FROM_UNIXTIME( REGEXP_SUBSTR(a_session, "(?<=\\\\b_SESSION_ATIME: )\\\\d+\\\\b") )) BETWEEN <<from|date>> AND <<to|date>>
+  AND
+  REGEXP_SUBSTR(a_session, "(?<=\\\\binterface: )\\\\w+\\\\b") = <<Kayttoliittyma (opac,,intranet)>>
+  AND REGEXP_SUBSTR(a_session, "(?<=\\\\b_SESSION_REMOTE_ADDR: )[0-9.:a-z]+\\\\b")!='37.27.31.48' # zabbix ip
+ORDER BY
+  FROM_UNIXTIME( REGEXP_SUBSTR(a_session, "(?<=\\\\b_SESSION_ATIME: )\\\\d+\\\\b") ) DESC
+
+-----
 

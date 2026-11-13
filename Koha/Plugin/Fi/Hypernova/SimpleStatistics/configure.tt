@@ -12,6 +12,16 @@
 </div>
 [% END %]
 
+[% IF has_available %]
+<form method="post" style="margin-bottom:1em">
+    <input type="hidden" name="class" value="[% CLASS | html %]"/>
+    <input type="hidden" name="method" value="[% METHOD | html %]"/>
+    <input type="hidden" name="deploy_all" value="1"/>
+    [% INCLUDE 'csrf-token.inc' %]
+    <input type="submit" class="btn btn-primary" value="Deploy all available"/>
+</form>
+[% END %]
+
 <table id="simplestatistics-reports" class="table table-bordered">
     <thead>
         <tr>
@@ -36,7 +46,20 @@
             <td>[% IF r.public %]Yes[% ELSE %]No[% END %]</td>
             <td>
                 [% IF r.deployed %]
-                    <span class="label label-success">Deployed[% IF r.language %] ([% r.language | html %])[% END %]</span>
+                    <span class="label label-success">Deployed [% r.language | html %]</span>
+                    <a class="btn btn-mini" href="/cgi-bin/koha/reports/guided_reports.pl?op=edit_form&amp;id=[% r.saved_sql_id | html %]">edit #[% r.saved_sql_id | html %]</a>
+                    [% IF r.differs %]
+                        <span class="label label-warning">differs</span>
+                        <form method="post" style="display:inline">
+                            <input type="hidden" name="class" value="[% CLASS | html %]"/>
+                            <input type="hidden" name="method" value="[% METHOD | html %]"/>
+                            <input type="hidden" name="update" value="1"/>
+                            <input type="hidden" name="code" value="[% r.code | html %]"/>
+                            [% INCLUDE 'csrf-token.inc' %]
+                            <input type="submit" class="btn btn-default btn-sm" value="Update to plugin version"/>
+                        </form>
+                    [% END %]
+                    <div class="hint">deployed [% r.deployed_on | html %]</div>
                 [% ELSE %]
                 <form method="post" style="display:inline">
                     <input type="hidden" name="class" value="[% CLASS | html %]"/>
@@ -56,7 +79,8 @@
 <p class="hint">
     Rows highlighted in red are not deployed in Koha's SQL reports
     (for example after a librarian deleted them). Public reports are never
-    deployed automatically &mdash; use the Deploy button.
+    deployed automatically &mdash; use the Deploy button. "differs" means the
+    deployed report has been edited and no longer matches the plugin version.
 </p>
 
 [% END %]

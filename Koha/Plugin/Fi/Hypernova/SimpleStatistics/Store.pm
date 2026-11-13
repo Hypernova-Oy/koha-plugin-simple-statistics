@@ -24,10 +24,11 @@ use YAML::XS   qw(Load);
 
 use C4::Context;
 use C4::Languages  qw(getLanguages regex_lang_subtags);
-use C4::Reports::Guided qw(save_report);
+use C4::Reports::Guided qw(save_report update_sql);
 
 use Koha::AuthorisedValue;
 use Koha::AuthorisedValues;
+use Koha::Report;
 use Koha::Reports;
 
 use constant MAPPING_TABLE => 'report_mappings';
@@ -291,6 +292,18 @@ sub sql_hash {
     return sha256_hex( _normalize_sql($sql) );
 }
 
+=head2 validate_sql
+
+Return ( $ok, \@errors ) for a SQL statement, using Koha's own report
+validator (rejects non-SELECT statements and illegal columns).
+
+=cut
+
+sub validate_sql {
+    my ($sql) = @_;
+    return Koha::Report->new( { savedsql => $sql } )->is_sql_valid;
+}
+
 =head2 seed_report_av
 
 Ensure the REPORT_GROUP / REPORT_SUBGROUP authorised values exist for a
@@ -369,6 +382,10 @@ sub deploy_report {
     my $text = resolve_text( $def, $lang->{code} );
     my $sql  = localize_sql( $def, $lang->{code} );
 
+    my ( $ok, $errors ) = validate_sql($sql);
+    die "Invalid SQL for report '$code': " . join( '; ', map { ( values %$_ )[0] } @$errors ) . "\n"
+        unless $ok;
+
     seed_report_av( $self, $def->{group}, $def->{subgroup} );
 
     my $id = save_report(
@@ -396,6 +413,59 @@ sub deploy_report {
     return $id;
 }
 
+=head2 update_report
+
+Overwrite an already-deployed report with the plugin's current definition
+(localized for the default language). Used by the "Update to plugin version"
+action.
+
+=cut
+
+sub update_report {
+    my ( $self, $code, $borrowernumber ) = @_;
+
+    my $def = get_definition( $self, $code )
+        or die "Unknown report code: $code\n";
+
+    my $mappings     = get_mappings($self);
+    my $saved_sql_id = $mappings->{$code}{saved_sql_id}
+        or die "Report '$code' is not deployed\n";
+
+    my $lang = default_language($self);
+    my $text = resolve_text( $def, $lang->{code} );
+    my $sql  = localize_sql( $def, $lang->{code} );
+
+    my ( $ok, $errors ) = validate_sql($sql);
+    die "Invalid SQL for report '$code': " . join( '; ', map { ( values %$_ )[0] } @$errors ) . "\n"
+        unless $ok;
+
+    seed_report_av( $self, $def->{group}, $def->{subgroup} );
+
+    update_sql(
+        $saved_sql_id,
+        {
+            sql          => $sql,
+            name         => $text->{name},
+            notes        => $text->{description},
+            group        => ( $def->{group} ne q{} ? $def->{group} : undef ),
+            subgroup     => ( $def->{subgroup} ne q{} ? $def->{subgroup} : undef ),
+            cache_expiry => 300,
+            public       => $def->{public},
+        }
+    );
+
+    set_mapping(
+        $self, $code, $saved_sql_id,
+        {
+            language           => $lang->{code},
+            canonical_sql_hash => sql_hash( $def->{sql} ),
+            deployed_sql_hash  => sql_hash($sql),
+        }
+    );
+
+    return $saved_sql_id;
+}
+
 =head2 deploy_available
 
 Auto-deploy every non-public report that has not been seen before (neither
@@ -419,6 +489,32 @@ sub deploy_available {
     }
 
     return \@deployed;
+}
+
+=head2 prune_mappings
+
+Delete mapping rows whose code no longer exists in the YAML. Returns the
+number of removed rows.
+
+=cut
+
+sub prune_mappings {
+    my ($self) = @_;
+
+    my $defs     = load_definitions($self);
+    my %codes    = map { $_->{code} => 1 } @$defs;
+    my $mappings = get_mappings($self);
+    my $dbh      = C4::Context->dbh;
+    my $table    = mapping_table($self);
+
+    my $removed = 0;
+    for my $code ( keys %$mappings ) {
+        next if $codes{$code};
+        $dbh->do( "DELETE FROM `$table` WHERE code = ?", undef, $code );
+        $removed++;
+    }
+
+    return $removed;
 }
 
 =head2 list_reports
@@ -449,7 +545,7 @@ sub list_reports {
     for my $def (@$defs) {
         my $text   = resolve_text( $def, $lang->{code} );
         my $status = 'available';
-        my ( $saved_sql_id, $deployed_on, $language );
+        my ( $saved_sql_id, $deployed_on, $language, $differs );
 
         if ( exists $mappings->{ $def->{code} } ) {
             my $m        = $mappings->{ $def->{code} };
@@ -457,7 +553,14 @@ sub list_reports {
             $deployed_on  = $m->{deployed_on};
             $language     = $m->{language};
             my $report = Koha::Reports->find($saved_sql_id);
-            $status    = $report ? 'deployed' : 'masked';
+            if ($report) {
+                $status = 'deployed';
+                my $expected = localize_sql( $def, $language );
+                $differs = ( sql_hash( $report->savedsql ) ne sql_hash($expected) ) ? 1 : 0;
+            }
+            else {
+                $status = 'masked';
+            }
         }
 
         push @reports, {
@@ -474,6 +577,7 @@ sub list_reports {
             status       => $status,
             deployed     => ( $status eq 'deployed' ? 1 : 0 ),
             masked       => ( $status eq 'masked'   ? 1 : 0 ),
+            differs      => ( $differs ? 1 : 0 ),
         };
     }
 
