@@ -4,6 +4,14 @@
 <div class="alert alert-warning">[% error | html %]</div>
 [% END %]
 
+[% IF default_language %]
+<div class="alert alert-info">
+    Default staff interface language:
+    <strong>[% default_language.description | html %] ([% default_language.code | html %])</strong>.
+    Automatic report installs use this language.
+</div>
+[% END %]
+
 <table id="simplestatistics-reports" class="table table-bordered">
     <thead>
         <tr>
@@ -28,7 +36,7 @@
             <td>[% IF r.public %]Yes[% ELSE %]No[% END %]</td>
             <td>
                 [% IF r.deployed %]
-                    <span class="label label-success">Deployed</span>
+                    <span class="label label-success">Deployed[% IF r.language %] ([% r.language | html %])[% END %]</span>
                 [% ELSE %]
                 <form method="post" style="display:inline">
                     <input type="hidden" name="class" value="[% CLASS | html %]"/>

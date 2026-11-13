@@ -44,3 +44,28 @@ WHERE
 
 -----
 
+NEW Reports
+
+-----
+
+Viestit, joiden lähetys on epäonnistunut
+
+
+
+SELECT *
+FROM message_queue
+WHERE status = 'failed'
+ORDER BY message_id DESC
+
+-----
+
+Asiakkaiden tietojenkäsittelyn suostumukset
+
+Järjestyksessä kieltäytymiset ensin, ja sen jälkeen suostumukset. Uusimmasta vanhimpaan.
+
+SELECT * FROM patron_consent
+ORDER BY patron_consent.refused_on DESC, patron_consent.given_on DESC
+
+------
+
+

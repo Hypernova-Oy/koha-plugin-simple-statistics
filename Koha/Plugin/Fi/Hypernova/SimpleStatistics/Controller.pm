@@ -76,10 +76,15 @@ sub configure {
         $reports = [];
     }
 
+    my $default_language = eval {
+        Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::default_language($self);
+    };
+
     my $template = $self->get_template( { file => 'configure.tt' } );
     $template->param(
-        reports => $reports,
-        error   => $error,
+        reports          => $reports,
+        error            => $error,
+        default_language => $default_language,
     );
     $self->output_html( $template->output() );
 }

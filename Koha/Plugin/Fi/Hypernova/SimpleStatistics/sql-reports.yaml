@@ -2,32 +2,51 @@
 # SQL report definitions for koha-plugin-simple-statistics.
 #
 # Each entry:
-#   code        - stable unique identifier, used to track the saved_sql.id mapping
-#   name        - report name (saved_sql.report_name)
-#   description - report notes/description (saved_sql.notes)
-#   group       - report group (saved_sql.report_group); optional
-#   subgroup    - report subgroup (saved_sql.report_subgroup); optional
-#   public      - whether the report is public (saved_sql.public).
-#                 Public reports are NEVER auto-deployed.
-#   sql         - the SQL (saved_sql.savedsql)
+#   code         - stable unique identifier, used to track the saved_sql.id mapping
+#   name         - report name in English (the fallback used when no translation
+#                  exists for the target language)
+#   description  - report notes/description in English (fallback)
+#   group        - report group (saved_sql.report_group); optional
+#   subgroup     - report subgroup (saved_sql.report_subgroup); optional
+#   public       - whether the report is public (saved_sql.public).
+#                  Public reports are NEVER auto-deployed.
+#   translations - optional map of RFC4646 language code to a hash with:
+#                    name        - localized report name
+#                    description - localized notes/description
+#                    aliases     - map of English column alias -> localized alias.
+#                                  Column aliases in `sql` are written in English
+#                                  (AS 'First name') and rewritten at deploy time.
+#   sql          - the SQL (saved_sql.savedsql).
+#
+# The report is deployed using the default staff interface language: the topmost
+# language of the StaffInterfaceLanguages system preference. Fallback order per
+# report: exact code (fi-FI) -> primary subtag (fi) -> the English name/description.
 
 reports:
   - code: message-queue
-    name: "Viestijono"
-    description: "Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle"
+    name: "Message queue"
+    description: "Shows the most recent messages Koha is about to send out."
     group: ""
     subgroup: ""
     public: false
+    translations:
+      fi-FI:
+        name: "Viestijono"
+        description: "Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle"
     sql: |
       SELECT * FROM message_queue
       ORDER BY time_queued DESC
 
   - code: last-active-borrowers
-    name: "Viimeisimmät aktiiviset asiakkaat"
-    description: "Ketkä ovat viimeksi asioineet \"lastseen\"-järjestelmäasetuksen puitteissa."
+    name: "Most recently active patrons"
+    description: "Which patrons have transacted most recently, within the \"lastseen\" system preference."
     group: ""
     subgroup: ""
     public: false
+    translations:
+      fi-FI:
+        name: "Viimeisimmät aktiiviset asiakkaat"
+        description: "Ketkä ovat viimeksi asioineet \"lastseen\"-järjestelmäasetuksen puitteissa."
     sql: |
       SELECT borrowernumber, firstname, surname, categorycode, lastseen
       FROM borrowers
@@ -35,11 +54,15 @@ reports:
       ORDER BY lastseen DESC
 
   - code: item-notes
-    name: "Kaikki niteiden huomautukset"
-    description: "Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja"
+    name: "All item notes"
+    description: "Used to check whether item note fields contain personal data."
     group: ""
     subgroup: ""
     public: false
+    translations:
+      fi-FI:
+        name: "Kaikki niteiden huomautukset"
+        description: "Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja"
     sql: |
       SELECT itemnumber, itemnotes, itemnotes_nonpublic
       FROM items
@@ -47,11 +70,15 @@ reports:
         OR itemnotes_nonpublic != ''
 
   - code: marc-notes
-    name: "MARC-tietojen huomautukset"
-    description: "Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja."
+    name: "MARC data notes"
+    description: "Used to check whether MARC note fields contain personal data."
     group: ""
     subgroup: ""
     public: false
+    translations:
+      fi-FI:
+        name: "MARC-tietojen huomautukset"
+        description: "Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja."
     sql: |
       SELECT
         biblionumber,
