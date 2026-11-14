@@ -1,7 +1,10 @@
 [% USE Koha %]
+[% USE Asset %]
 [% WRAPPER 'wrapper-staff-tool-plugin.inc' method='configure' plugin_title='Simple Statistics: SQL reports' %]
 
-[% INCLUDE 'datatables.inc' %]
+[% INCLUDE 'format_price.inc' %]
+<script src="[% Asset.url('lib/datatables/datatables.min.js') | html %]" defer></script>
+<script src="[% Asset.url('js/datatables.js') | html %]" defer></script>
 
 <style>
 #simplestatistics-sql-overlay .modal-dialog { max-width: 760px; margin: 0 auto; }

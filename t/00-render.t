@@ -25,17 +25,25 @@ close $fh;
 open $fh, '>', "$tmp/csrf-token.inc" or die $!;
 print {$fh} "";
 close $fh;
-open $fh, '>', "$tmp/datatables.inc" or die $!;
+open $fh, '>', "$tmp/format_price.inc" or die $!;
 print {$fh} "";
 close $fh;
 
-# A minimal loadable TT plugin stub for the Koha plugin the template uses.
+# Loadable TT plugin stubs for the Koha/Asset plugins the template uses.
 open $fh, '>', "$tmp/StubKoha.pm" or die $!;
 print {$fh} <<'STUB';
 package StubKoha;
 use base qw(Template::Plugin);
 sub CSPNonce    { return q{testnonce}; }
 sub GenerateCSRF { return q{testtoken}; }
+1;
+STUB
+close $fh;
+open $fh, '>', "$tmp/StubAsset.pm" or die $!;
+print {$fh} <<'STUB';
+package StubAsset;
+use base qw(Template::Plugin);
+sub url { return q{/intranet-tmpl/lib/test.js}; }
 1;
 STUB
 close $fh;
@@ -46,7 +54,7 @@ my $tt = Template->new(
     {
         INCLUDE_PATH => [ $tmp, $plugin_dir ],
         ABSOLUTE     => 1,
-        PLUGINS      => { Koha => 'StubKoha' },
+        PLUGINS      => { Koha => 'StubKoha', Asset => 'StubAsset' },
     }
 );
 
@@ -107,5 +115,6 @@ like( $out, qr/Not deployed/,                  'renders not-deployed status' );
 like( $out, qr/SQL/,                           'renders SQL peek button' );
 like( $out, qr/simplestatistics-sql-overlay/,  'renders SQL modal' );
 like( $out, qr/nonce="testnonce"/,             'renders script with CSP nonce' );
+like( $out, qr/defer/,                         'renders DataTables scripts with defer' );
 
 done_testing();
