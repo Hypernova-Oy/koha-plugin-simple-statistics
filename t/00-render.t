@@ -14,8 +14,8 @@ use Template;
 use File::Spec;
 use File::Temp qw(tempdir);
 
-# Render configure.tt with stubbed wrapper/includes so we exercise the table
-# logic (columns, badges, buttons, modal) without Koha's full auth/template stack.
+# Render configure.tt with stubbed wrapper/includes/plugins so we exercise the
+# table logic (columns, badges, buttons, modal) without Koha's full auth stack.
 my $plugin_dir = File::Spec->rel2abs('Koha/Plugin/Fi/Hypernova/SimpleStatistics');
 my $tmp = tempdir( CLEANUP => 1 );
 
@@ -29,7 +29,26 @@ open $fh, '>', "$tmp/datatables.inc" or die $!;
 print {$fh} "";
 close $fh;
 
-my $tt = Template->new( { INCLUDE_PATH => [ $tmp, $plugin_dir ], ABSOLUTE => 1 } );
+# A minimal loadable TT plugin stub for the Koha plugin the template uses.
+open $fh, '>', "$tmp/StubKoha.pm" or die $!;
+print {$fh} <<'STUB';
+package StubKoha;
+use base qw(Template::Plugin);
+sub CSPNonce    { return q{testnonce}; }
+sub GenerateCSRF { return q{testtoken}; }
+1;
+STUB
+close $fh;
+
+unshift @INC, $tmp;
+
+my $tt = Template->new(
+    {
+        INCLUDE_PATH => [ $tmp, $plugin_dir ],
+        ABSOLUTE     => 1,
+        PLUGINS      => { Koha => 'StubKoha' },
+    }
+);
 
 my $reports = [
     {
@@ -87,5 +106,6 @@ like( $out, qr/Deployed/,                      'renders deployed status' );
 like( $out, qr/Not deployed/,                  'renders not-deployed status' );
 like( $out, qr/SQL/,                           'renders SQL peek button' );
 like( $out, qr/simplestatistics-sql-overlay/,  'renders SQL modal' );
+like( $out, qr/nonce="testnonce"/,             'renders script with CSP nonce' );
 
 done_testing();

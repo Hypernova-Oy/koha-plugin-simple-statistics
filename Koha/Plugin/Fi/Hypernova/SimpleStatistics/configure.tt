@@ -1,3 +1,4 @@
+[% USE Koha %]
 [% WRAPPER 'wrapper-staff-tool-plugin.inc' method='configure' plugin_title='Simple Statistics: SQL reports' %]
 
 [% INCLUDE 'datatables.inc' %]
@@ -133,12 +134,12 @@
     </div>
 </div>
 
-<script>
+<script nonce="[% Koha.CSPNonce | html %]">
 $(document).ready(function() {
     $("#simplestatistics-reports").dataTable({ "order": [[ 0, "asc" ]] });
 
     var overlay = $("#simplestatistics-sql-overlay");
-    $(".sql-peek").on("click", function() {
+    $(document).on("click", ".sql-peek", function() {
         var b = $(this);
         $("#simplestatistics-sql-title").text( b.attr("data-name") );
         var langInfo = "";

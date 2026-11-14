@@ -31,7 +31,7 @@ our $metadata = {
     date_updated    => '2026-11-13',
     minimum_version => '25.11.00.000',
     maximum_version => undef,
-    version         => '1.5.0',
+    version         => '1.5.1',
     description     => 'Deploy and manage a curated set of SQL reports for Koha.',
     namespace       => 'simplestatistics',
 };
