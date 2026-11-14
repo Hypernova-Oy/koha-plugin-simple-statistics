@@ -121,7 +121,7 @@
     matches the plugin version.
 </p>
 
-<div id="simplestatistics-sql-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto; padding:60px 0;">
+<div id="simplestatistics-sql-overlay" class="modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto; padding:60px 0;">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -139,7 +139,7 @@
 
 <script nonce="[% Koha.CSPNonce | html %]">
 document.addEventListener("DOMContentLoaded", function() {
-    $("#simplestatistics-reports").dataTable({ "order": [[ 0, "asc" ]] });
+    $("#simplestatistics-reports").dataTable({ "order": [[ 0, "asc" ]], "pageLength": 100 });
 
     var overlay = $("#simplestatistics-sql-overlay");
     $(document).on("click", ".sql-peek", function() {
