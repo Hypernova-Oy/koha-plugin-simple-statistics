@@ -2,6 +2,11 @@
 
 [% INCLUDE 'datatables.inc' %]
 
+<style>
+#simplestatistics-sql-overlay .modal-dialog { max-width: 760px; margin: 0 auto; }
+#simplestatistics-sql-diff { color: #a94442; }
+</style>
+
 [% IF error %]
 <div class="alert alert-warning">[% error | html %]</div>
 [% END %]
@@ -32,24 +37,51 @@
             <th>Group</th>
             <th>Subgroup</th>
             <th>Public</th>
+            <th>ID</th>
+            <th>Status</th>
+            <th>SQL</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
     [% FOREACH r IN reports %]
         <tr[% UNLESS r.deployed %] style="background-color:#f2dede;"[% END %]>
-            <td>
-                [% r.name | html %]
-                [% IF r.masked %] <span class="label label-default">masked</span>[% END %]
-            </td>
+            <td>[% r.name | html %]</td>
             <td>[% r.description | html %]</td>
             <td>[% r.group | html %]</td>
             <td>[% r.subgroup | html %]</td>
             <td>[% IF r.public %]Yes[% ELSE %]No[% END %]</td>
             <td>
                 [% IF r.deployed %]
-                    <span class="label label-success">Deployed [% r.language | html %]</span>
-                    <a class="btn btn-mini" href="/cgi-bin/koha/reports/guided_reports.pl?op=edit_form&amp;id=[% r.saved_sql_id | html %]">edit #[% r.saved_sql_id | html %]</a>
+                    <a href="/cgi-bin/koha/reports/guided_reports.pl?id=[% r.saved_sql_id | html %]&amp;op=show">[% r.saved_sql_id | html %]</a>
+                [% END %]
+            </td>
+            <td>
+                [% IF r.deployed %]
+                    Deployed
+                    [% IF r.deployed_on %]<div class="hint">[% r.deployed_on | html %]</div>[% END %]
+                [% ELSIF r.masked %]
+                    Masked
+                [% ELSE %]
+                    Not deployed
+                [% END %]
+            </td>
+            <td>
+                <button type="button" class="btn btn-default btn-xs sql-peek"
+                    data-name="[% r.name | html %]"
+                    data-lang="[% r.language | html %]"
+                    data-default-lang="[% default_language.code | html %]"
+                    data-hasdiff="[% r.differs %]"
+                    data-sql="[% IF r.deployed %][% r.deployed_sql | html %][% ELSE %][% r.current_sql | html %][% END %]"
+                    data-diff="[% r.diff | html %]">SQL</button>
+            </td>
+            <td>
+                [% IF r.deployed %]
+                    <form method="get" action="/cgi-bin/koha/reports/guided_reports.pl" style="display:inline">
+                        <input type="hidden" name="id" value="[% r.saved_sql_id | html %]"/>
+                        <input type="hidden" name="op" value="edit_form"/>
+                        <input type="submit" class="btn btn-default btn-xs" value="Edit"/>
+                    </form>
                     [% IF r.differs %]
                         <span class="label label-warning">differs</span>
                         <form method="post" style="display:inline">
@@ -58,10 +90,9 @@
                             <input type="hidden" name="update" value="1"/>
                             <input type="hidden" name="code" value="[% r.code | html %]"/>
                             [% INCLUDE 'csrf-token.inc' %]
-                            <input type="submit" class="btn btn-default btn-sm" value="Update to plugin version"/>
+                            <input type="submit" class="btn btn-default btn-xs" value="Update to plugin version"/>
                         </form>
                     [% END %]
-                    <div class="hint">deployed [% r.deployed_on | html %]</div>
                 [% ELSE %]
                 <form method="post" style="display:inline">
                     <input type="hidden" name="class" value="[% CLASS | html %]"/>
@@ -69,13 +100,9 @@
                     <input type="hidden" name="deploy" value="1"/>
                     <input type="hidden" name="code" value="[% r.code | html %]"/>
                     [% INCLUDE 'csrf-token.inc' %]
-                    <input type="submit" class="btn btn-default btn-sm" value="Deploy"/>
+                    <input type="submit" class="btn btn-default btn-xs" value="Deploy"/>
                 </form>
                 [% END %]
-                <details>
-                    <summary>SQL</summary>
-                    <pre>[% r.sql | html %]</pre>
-                </details>
             </td>
         </tr>
     [% END %]
@@ -86,12 +113,53 @@
     Rows highlighted in red are not deployed in Koha's SQL reports
     (for example after a librarian deleted them). Public reports are never
     deployed automatically &mdash; use the Deploy button. "differs" means the
-    deployed report has been edited and no longer matches the plugin version.
+    deployed report has been edited or the language changed and no longer
+    matches the plugin version.
 </p>
+
+<div id="simplestatistics-sql-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto; padding:60px 0;">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="simplestatistics-sql-title">SQL</h5>
+                <button type="button" class="btn-close" id="simplestatistics-sql-close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="simplestatistics-sql-lang" class="hint"></div>
+                <pre id="simplestatistics-sql-diff" style="display:none;"></pre>
+                <pre id="simplestatistics-sql-body"></pre>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 $(document).ready(function() {
     $("#simplestatistics-reports").dataTable({ "order": [[ 0, "asc" ]] });
+
+    var overlay = $("#simplestatistics-sql-overlay");
+    $(".sql-peek").on("click", function() {
+        var b = $(this);
+        $("#simplestatistics-sql-title").text( b.attr("data-name") );
+        var langInfo = "";
+        if ( b.attr("data-lang") ) {
+            langInfo = "Deployed in " + b.attr("data-lang");
+            if ( b.attr("data-default-lang") && b.attr("data-default-lang") !== b.attr("data-lang") ) {
+                langInfo += " &middot; current default " + b.attr("data-default-lang");
+            }
+        }
+        $("#simplestatistics-sql-lang").html(langInfo);
+        if ( b.attr("data-hasdiff") === "1" ) {
+            $("#simplestatistics-sql-diff").text( b.attr("data-diff") ).show();
+            $("#simplestatistics-sql-body").hide();
+        } else {
+            $("#simplestatistics-sql-diff").hide();
+            $("#simplestatistics-sql-body").text( b.attr("data-sql") ).show();
+        }
+        overlay.show();
+    });
+    $("#simplestatistics-sql-close").on("click", function() { overlay.hide(); });
+    overlay.on("click", function(e) { if (e.target === this) overlay.hide(); });
 });
 </script>
 

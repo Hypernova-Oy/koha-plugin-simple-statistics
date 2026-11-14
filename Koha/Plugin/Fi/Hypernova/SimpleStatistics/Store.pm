@@ -20,6 +20,7 @@ package Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store;
 use Modern::Perl;
 
 use Digest::SHA qw(sha256_hex);
+use Algorithm::Diff qw(diff);
 use YAML::XS   qw(Load);
 
 use C4::Context;
@@ -297,6 +298,29 @@ sub sql_hash {
     return sha256_hex( _normalize_sql($sql) );
 }
 
+=head2 sql_diff
+
+Return a plain-text, unified-style diff between two SQL statements (lines
+prefixed with - and +). Used by the SQL peek modal to show what differs
+between the deployed report and the current plugin definition.
+
+=cut
+
+sub sql_diff {
+    my ( $old, $new ) = @_;
+    my @old_lines = split /\n/, ( $old // q{} );
+    my @new_lines = split /\n/, ( $new // q{} );
+    my @hunks     = Algorithm::Diff::diff( \@old_lines, \@new_lines );
+    my @out;
+    for my $hunk (@hunks) {
+        for my $chunk (@$hunk) {
+            my ( $op, undef, $text ) = @$chunk;
+            push @out, ( $op eq '+' ? '+ ' : '- ' ) . $text;
+        }
+    }
+    return join qq{\n}, @out;
+}
+
 =head2 validate_sql
 
 Return ( $ok, \@errors ) for a SQL statement, using Koha's own report
@@ -553,9 +577,10 @@ sub list_reports {
 
     my @reports;
     for my $def (@$defs) {
-        my $text   = resolve_text( $def, $lang->{code} );
-        my $status = 'available';
-        my ( $saved_sql_id, $deployed_on, $language, $differs );
+        my $text        = resolve_text( $def, $lang->{code} );
+        my $current_sql = localize_sql( $def, $lang->{code} );
+        my $status      = 'available';
+        my ( $saved_sql_id, $deployed_on, $language, $deployed_sql, $differs, $diff );
 
         if ( exists $mappings->{ $def->{code} } ) {
             my $m        = $mappings->{ $def->{code} };
@@ -564,9 +589,10 @@ sub list_reports {
             $language     = $m->{language};
             my $report = Koha::Reports->find($saved_sql_id);
             if ($report) {
-                $status = 'deployed';
-                my $expected = localize_sql( $def, $language );
-                $differs = ( sql_hash( $report->savedsql ) ne sql_hash($expected) ) ? 1 : 0;
+                $status       = 'deployed';
+                $deployed_sql = $report->savedsql // q{};
+                $differs      = ( sql_hash($deployed_sql) ne sql_hash($current_sql) ) ? 1 : 0;
+                $diff         = $differs ? sql_diff( $deployed_sql, $current_sql ) : undef;
             }
             else {
                 $status = 'masked';
@@ -581,6 +607,9 @@ sub list_reports {
             subgroup     => $def->{subgroup},
             public       => $def->{public},
             sql          => $def->{sql},
+            current_sql  => $current_sql,
+            deployed_sql => $deployed_sql,
+            diff         => $diff,
             saved_sql_id => $saved_sql_id,
             deployed_on  => $deployed_on,
             language     => $language,

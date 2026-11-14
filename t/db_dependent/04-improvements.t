@@ -87,6 +87,8 @@ $dbh->do( "UPDATE saved_sql SET savedsql = 'SELECT 999' WHERE id = ?", undef, $i
 $reports = $list_reports->($fake);
 ($r) = grep { $_->{code} eq 'demo' } @$reports;
 is( $r->{differs}, 1, 'differs after librarian edit' );
+like( $r->{diff}, qr/- SELECT 999/, 'diff shows removed line' );
+like( $r->{diff}, qr/\+ SELECT 1/, 'diff shows added line' );
 
 my $updated_id = $update_report->( $fake, 'demo', undef );
 is( $updated_id, $id, 'update_report returns the same id' );
