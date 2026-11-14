@@ -135,7 +135,7 @@
 </div>
 
 <script nonce="[% Koha.CSPNonce | html %]">
-$(document).ready(function() {
+document.addEventListener("DOMContentLoaded", function() {
     $("#simplestatistics-reports").dataTable({ "order": [[ 0, "asc" ]] });
 
     var overlay = $("#simplestatistics-sql-overlay");
