@@ -30,7 +30,15 @@ my @report_names = (
     'MARC-tietojen huomautukset',
     'Viestit, joiden lähetys on epäonnistunut',
     'Asiakkaiden tietojenkäsittelyn suostumukset',
+    'Lainatilasto',
+    'Säästetty raha',
+    'Vuositilasto',
+    'Kartunta ja poistot',
+    'Uudet ja poistetut asiakkaat',
+    'Tilausseuranta',
+    'Hankinnat toimittajittain',
 );
+
 my $placeholders = join ',', map {'?'} @report_names;
 
 # --- Clean any previous state (self-cleaning test) ---
@@ -56,7 +64,7 @@ my $deployed = $dbh->selectall_arrayref(
     "SELECT id, report_name FROM saved_sql WHERE report_name IN ($placeholders) AND borrowernumber IS NULL ORDER BY id",
     { Slice => {} }, @report_names
 );
-is( scalar(@$deployed), 6, 'all 6 reports auto-deployed on install' );
+is( scalar(@$deployed), 13, 'all 13 reports auto-deployed on install' );
 
 my ($method_count) = $dbh->selectrow_array(
     "SELECT COUNT(*) FROM plugin_methods WHERE plugin_class = ? AND plugin_method = 'configure'",
@@ -78,7 +86,7 @@ my $after_upgrade = $dbh->selectall_arrayref(
     "SELECT id FROM saved_sql WHERE report_name IN ($placeholders) AND borrowernumber IS NULL",
     { Slice => {} }, @report_names
 );
-is( scalar(@$after_upgrade), 6, 'no duplicate reports after upgrade' );
+is( scalar(@$after_upgrade), 13, 'no duplicate reports after upgrade' );
 
 # --- Uninstall ---
 $plugin->uninstall();
@@ -105,7 +113,7 @@ my $remaining = $dbh->selectall_arrayref(
     "SELECT id FROM saved_sql WHERE report_name IN ($placeholders) AND borrowernumber IS NULL",
     { Slice => {} }, @report_names
 );
-is( scalar(@$remaining), 6, 'reports remain in saved_sql after uninstall (by design)' );
+is( scalar(@$remaining), 13, 'reports remain in saved_sql after uninstall (by design)' );
 
 # --- Cleanup: remove the reports this test deployed ---
 $dbh->do(

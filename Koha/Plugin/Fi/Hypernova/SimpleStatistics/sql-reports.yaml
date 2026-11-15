@@ -1,71 +1,161 @@
 ---
 # SQL report definitions for koha-plugin-simple-statistics.
 #
-# Each entry:
-#   code         - stable unique identifier, used to track the saved_sql.id mapping
-#   name         - report name in English (the fallback used when no translation
-#                  exists for the target language)
-#   description  - report notes/description in English (fallback)
-#   group        - report group (saved_sql.report_group); optional
+#   code         - stable unique identifier
+#   name         - report name in English (fallback)
+#   description  - report notes/description in English (fallback). Descriptions end
+#                  with "Hypernova Oy" so plugin-authored reports are easy to tell
+#                  apart from library-created reports.
+#   group        - report group (saved_sql.report_group). Standard Koha area codes
+#                  so reports mix with the library's own groups: CIRC / CAT / PAT / ACQ.
 #   subgroup     - report subgroup (saved_sql.report_subgroup); optional
-#   public       - whether the report is public (saved_sql.public).
-#                  Public reports are NEVER auto-deployed.
-#   translations - optional map of RFC4646 language code to a hash with:
-#                    name        - localized report name
-#                    description - localized notes/description
-#                    aliases     - map of English column alias -> localized alias.
-#                                  Column aliases in `sql` are written in English
-#                                  (AS 'First name') and rewritten at deploy time.
-#   sql          - the SQL (saved_sql.savedsql).
+#   public       - saved_sql.public; public reports are NEVER auto-deployed
+#   translations - map of RFC4646 code to { name, description, aliases }
+#   sql          - the SQL (saved_sql.savedsql). Runtime params use <<param|date>>.
+#                  "hyllyluokka" (shelving class) = itemcallnumber.
 #
-# The report is deployed using the default staff interface language: the topmost
-# language of the StaffInterfaceLanguages system preference. Fallback order per
-# report: exact code (fi-FI) -> primary subtag (fi) -> the English name/description.
-#
-# Note: the marc-notes report uses the MySQL/MariaDB ExtractValue() XML function;
-# it is MariaDB-specific and does not work on stock MySQL 8.0+.
+# Reports are deployed in the default staff interface language (topmost of
+# StaffInterfaceLanguages). Fallback: exact code -> primary subtag -> English.
+# Note: the marc-notes report uses MySQL/MariaDB ExtractValue(); MariaDB-only.
 
 reports:
   - code: message-queue
     name: "Message queue"
-    description: "Shows the most recent messages Koha is about to send out."
-    group: ""
-    subgroup: ""
+    description: "Shows the most recent messages Koha is about to send out. — Hypernova Oy"
+    group: "CIRC"
+    subgroup: "Notices"
     public: false
     translations:
       fi-FI:
         name: "Viestijono"
-        description: "Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle"
+        description: "Tästä näet kaikki viimeisimmat viestit mitkä Koha on lähettämässä maailmalle. — Hypernova Oy"
     sql: |
       SELECT * FROM message_queue
       ORDER BY time_queued DESC
 
-  - code: last-active-borrowers
-    name: "Most recently active patrons"
-    description: "Which patrons have transacted most recently, within the \"lastseen\" system preference."
-    group: ""
+  - code: failed-messages
+    name: "Failed messages"
+    description: "Messages in the message queue whose sending failed. — Hypernova Oy"
+    group: "CIRC"
+    subgroup: "Notices"
+    public: false
+    translations:
+      fi-FI:
+        name: "Viestit, joiden lähetys on epäonnistunut"
+        description: "Viestijonon viestit, joiden lähetys on epäonnistunut. — Hypernova Oy"
+    sql: |
+      SELECT *
+      FROM message_queue
+      WHERE status = 'failed'
+      ORDER BY message_id DESC
+
+  - code: loans-returns
+    name: "Loan statistics"
+    description: "Loans and returns by material type and shelving classification. — Hypernova Oy"
+    group: "CIRC"
     subgroup: ""
     public: false
     translations:
       fi-FI:
-        name: "Viimeisimmät aktiiviset asiakkaat"
-        description: "Ketkä ovat viimeksi asioineet \"lastseen\"-järjestelmäasetuksen puitteissa."
+        name: "Lainatilasto"
+        description: "Lainat ja palautukset aineistolajeittain ja hyllyluokittain. — Hypernova Oy"
     sql: |
-      SELECT borrowernumber, firstname, surname, categorycode, lastseen
-      FROM borrowers
-      WHERE lastseen IS NOT NULL
-      ORDER BY lastseen DESC
+      SELECT
+        COALESCE(i.itype, 'ei aineistolajia') AS aineistolaji,
+        COALESCE(i.itemcallnumber, 'ei hyllyluokkaa') AS hyllyluokka,
+        SUM(CASE WHEN s.type = 'issue' THEN 1 ELSE 0 END) AS lainat,
+        SUM(CASE WHEN s.type = 'return' THEN 1 ELSE 0 END) AS palautukset
+      FROM statistics s
+      LEFT JOIN items i ON i.itemnumber = s.itemnumber
+      WHERE s.type IN ('issue', 'return')
+        AND s.datetime BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+      GROUP BY i.itype, i.itemcallnumber
+      WITH ROLLUP
+
+  - code: money-saved
+    name: "Money saved vs. buying new"
+    description: "How much money has been saved if each loan had been bought new (replacement price, falling back to purchase price). — Hypernova Oy"
+    group: "CIRC"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Säästetty raha"
+        description: "Paljonko rahaa on säästetty, jos jokainen laina olisi ostettu uutena (korvaushinta, tai hankintahinta). — Hypernova Oy"
+    sql: |
+      SELECT
+        SUM(COALESCE(i.replacementprice, i.price, di.replacementprice, di.price)) AS säästetty,
+        COUNT(*) AS lainat
+      FROM statistics s
+      LEFT JOIN items i ON i.itemnumber = s.itemnumber
+      LEFT JOIN deleteditems di ON di.itemnumber = s.itemnumber
+      WHERE s.type = 'issue'
+        AND s.datetime BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+
+  - code: annual-summary
+    name: "Annual key figures"
+    description: "Key figures for a period: accessions, removals, new patrons, loans, returns. — Hypernova Oy"
+    group: "CIRC"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Vuositilasto"
+        description: "Avainluvut ajanjaksolta: kartunta, poistot, uudet asiakkaat, lainat, palautukset. — Hypernova Oy"
+    sql: |
+      SELECT
+        (SELECT COUNT(*) FROM items WHERE dateaccessioned BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>) AS kartunta,
+        (SELECT COUNT(*) FROM deleteditems WHERE timestamp BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>) AS poistot,
+        (SELECT COUNT(*) FROM borrowers WHERE dateenrolled BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>) AS uudet_asiakkaat,
+        (SELECT COUNT(*) FROM statistics WHERE type = 'issue' AND datetime BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>) AS lainat,
+        (SELECT COUNT(*) FROM statistics WHERE type = 'return' AND datetime BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>) AS palautukset
+
+  - code: weeding-removals
+    name: "Accessions and removals"
+    description: "Accessions and removals by material type and shelving classification, with the acquisition price total and the count of items missing price information. — Hypernova Oy"
+    group: "CAT"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Kartunta ja poistot"
+        description: "Kartunta ja poistot aineistolajeittain ja hyllyluokittain, kokonaissumma hankintahintana ja tieto moneltako niteeltä puuttui hintatieto. — Hypernova Oy"
+    sql: |
+      SELECT
+        COALESCE(x.itype, 'ei aineistolajia') AS aineistolaji,
+        COALESCE(x.itemcallnumber, 'ei hyllyluokkaa') AS hyllyluokka,
+        SUM(x.kartunta) AS kartunta,
+        SUM(x.poisto) AS poistot,
+        SUM(x.hankintahinta) AS hankintahinta,
+        SUM(x.hintap) AS hintatieto_puuttuu
+      FROM (
+        SELECT itype, itemcallnumber, COUNT(*) AS kartunta, 0 AS poisto,
+               SUM(COALESCE(price, 0)) AS hankintahinta,
+               SUM(CASE WHEN price IS NULL OR price = 0 THEN 1 ELSE 0 END) AS hintap
+        FROM items
+        WHERE dateaccessioned BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+        GROUP BY itype, itemcallnumber
+        UNION ALL
+        SELECT itype, itemcallnumber, 0 AS kartunta, COUNT(*) AS poisto,
+               SUM(COALESCE(price, 0)) AS hankintahinta,
+               SUM(CASE WHEN price IS NULL OR price = 0 THEN 1 ELSE 0 END) AS hintap
+        FROM deleteditems
+        WHERE timestamp BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+        GROUP BY itype, itemcallnumber
+      ) x
+      GROUP BY x.itype, x.itemcallnumber
+      WITH ROLLUP
 
   - code: item-notes
     name: "All item notes"
-    description: "Used to check whether item note fields contain personal data."
-    group: ""
+    description: "Used to check whether item note fields contain personal data. — Hypernova Oy"
+    group: "CAT"
     subgroup: ""
     public: false
     translations:
       fi-FI:
         name: "Kaikki niteiden huomautukset"
-        description: "Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja"
+        description: "Käytetään tarkistamaan onko niteiden huomautuskentissä henkilötietoja. — Hypernova Oy"
     sql: |
       SELECT itemnumber, itemnotes, itemnotes_nonpublic
       FROM items
@@ -74,14 +164,14 @@ reports:
 
   - code: marc-notes
     name: "MARC data notes"
-    description: "Used to check whether MARC note fields contain personal data."
-    group: ""
+    description: "Used to check whether MARC note fields contain personal data. — Hypernova Oy"
+    group: "CAT"
     subgroup: ""
     public: false
     translations:
       fi-FI:
         name: "MARC-tietojen huomautukset"
-        description: "Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja."
+        description: "Käytetään tarkistamaan onko MARC-huomautuskentissä henkilötietoja. — Hypernova Oy"
     sql: |
       SELECT
         biblionumber,
@@ -94,32 +184,93 @@ reports:
         ExtractValue(metadata,'//datafield[@tag="505"]/subfield[@code="a"]') != '' OR
         ExtractValue(metadata,'//datafield[@tag="583"]/subfield[@code="a"]') != ''
 
-  - code: failed-messages
-    name: "Failed messages"
-    description: "Messages in the message queue whose sending failed."
-    group: ""
+  - code: new-deleted-patrons
+    name: "New and deleted patrons"
+    description: "New and deleted patrons by period. — Hypernova Oy"
+    group: "PAT"
     subgroup: ""
     public: false
     translations:
       fi-FI:
-        name: "Viestit, joiden lähetys on epäonnistunut"
-        description: "Viestijonon viestit, joiden lähetys on epäonnistunut."
+        name: "Uudet ja poistetut asiakkaat"
+        description: "Uudet ja poistetut asiakkaat ajanjaksolla. — Hypernova Oy"
     sql: |
-      SELECT *
-      FROM message_queue
-      WHERE status = 'failed'
-      ORDER BY message_id DESC
+      SELECT 'Uusi' AS tyyppi, COUNT(*) AS lkm
+      FROM borrowers
+      WHERE dateenrolled BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+      UNION ALL
+      SELECT 'Poistettu' AS tyyppi, COUNT(*) AS lkm
+      FROM deletedborrowers
+      WHERE updated_on BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+
+  - code: last-active-borrowers
+    name: "Most recently active patrons"
+    description: "Which patrons have transacted most recently, within the \"lastseen\" system preference. — Hypernova Oy"
+    group: "PAT"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Viimeisimmät aktiiviset asiakkaat"
+        description: "Ketkä ovat viimeksi asioineet \"lastseen\"-järjestelmäasetuksen puitteissa. — Hypernova Oy"
+    sql: |
+      SELECT borrowernumber, firstname, surname, categorycode, lastseen
+      FROM borrowers
+      WHERE lastseen IS NOT NULL
+      ORDER BY lastseen DESC
 
   - code: patron-consents
     name: "Patron data processing consents"
-    description: "Patrons' data processing consents, refusals first and newest to oldest."
-    group: ""
+    description: "Patrons' data processing consents, refusals first and newest to oldest. — Hypernova Oy"
+    group: "PAT"
     subgroup: ""
     public: false
     translations:
       fi-FI:
         name: "Asiakkaiden tietojenkäsittelyn suostumukset"
-        description: "Järjestyksessä kieltäytymiset ensin, ja sen jälkeen suostumukset. Uusimmasta vanhimpaan."
+        description: "Järjestyksessä kieltäytymiset ensin, ja sen jälkeen suostumukset. Uusimmasta vanhimpaan. — Hypernova Oy"
     sql: |
       SELECT * FROM patron_consent
       ORDER BY patron_consent.refused_on DESC, patron_consent.given_on DESC
+
+  - code: order-tracking
+    name: "Order tracking"
+    description: "Items on order (notforloan = -1) and how many days they have been on order. — Hypernova Oy"
+    group: "ACQ"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Tilausseuranta"
+        description: "Tilatut niteet (notforloan = -1) ja kuinka monta päivää ne ovat olleet tilauksessa. — Hypernova Oy"
+    sql: |
+      SELECT
+        itemnumber,
+        barcode,
+        booksellerid,
+        biblio.title,
+        biblio.author,
+        TIMESTAMPDIFF(DAY, dateaccessioned, NOW()) AS "Tilauksessa päivää"
+      FROM items
+      LEFT JOIN biblio ON biblio.biblionumber = items.biblionumber
+      WHERE notforloan = '-1'
+      ORDER BY TIMESTAMPDIFF(DAY, dateaccessioned, NOW()) DESC
+
+  - code: vendor-budget
+    name: "Purchases by vendor"
+    description: "Number of items and total purchase price per vendor for a period. — Hypernova Oy"
+    group: "ACQ"
+    subgroup: ""
+    public: false
+    translations:
+      fi-FI:
+        name: "Hankinnat toimittajittain"
+        description: "Niteiden määrä ja hankintahinta toimittajittain ajanjaksolla. — Hypernova Oy"
+    sql: |
+      SELECT
+        booksellerid,
+        SUM(IF(price, price, replacementprice)) AS summa,
+        COUNT(*) AS kpl
+      FROM items
+      WHERE dateaccessioned BETWEEN <<alkupvm|date>> AND <<loppupvm|date>>
+      GROUP BY booksellerid

@@ -28,6 +28,7 @@ my $list_reports  = \&Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::list
 my $create_table  = \&Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::create_mapping_table;
 my $drop_table    = \&Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::drop_mapping_table;
 my $prune         = \&Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::prune_mappings;
+my $sync          = \&Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::sync_report_metadata;
 
 # --- validate_sql ---
 my ( $ok, $errors ) = $validate_sql->("SELECT 1");
@@ -126,6 +127,17 @@ YAML
 my $bad = bless {}, 'BadPlugin';
 Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::load_definitions($bad);
 like( $warnings, qr/bogus_key/, 'unknown key warns' );
+
+# --- sync_report_metadata updates group/subgroup/name, keeps SQL ---
+$dbh->do( "UPDATE saved_sql SET report_group = 'X', report_subgroup = 'Y' WHERE id = ?", undef, $id );
+my $synced = $sync->( $fake, undef );
+is( $synced, 1, 'sync updates one report' );
+my ( $rg, $rsg, $rname, $rsql ) = $dbh->selectrow_array(
+    "SELECT report_group, report_subgroup, report_name, savedsql FROM saved_sql WHERE id = ?", undef, $id );
+is( $rg,  'TestGroup',    'sync restores report_group' );
+is( $rsg, 'TestSubgroup', 'sync restores report_subgroup' );
+is( $rname, 'Demo',       'sync restores report name' );
+is( $rsql, 'SELECT 1',    'sync keeps SQL intact' );
 
 # --- cleanup ---
 $dbh->do( "DELETE FROM saved_sql WHERE id = ?", undef, $id );

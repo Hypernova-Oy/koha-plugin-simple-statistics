@@ -500,6 +500,53 @@ sub update_report {
     return $saved_sql_id;
 }
 
+=head2 sync_report_metadata
+
+On upgrade, update the group, subgroup, localized name and description of
+already-deployed reports to match the current YAML, without overwriting the
+SQL (so librarian SQL edits are preserved). Returns the number of updated
+reports.
+
+=cut
+
+sub sync_report_metadata {
+    my ( $self, $borrowernumber ) = @_;
+
+    my $defs     = load_definitions($self);
+    my $mappings = get_mappings($self);
+    my $lang     = default_language($self);
+
+    my $updated = 0;
+    for my $def (@$defs) {
+        next unless exists $mappings->{ $def->{code} };
+        my $saved_sql_id = $mappings->{ $def->{code} }{saved_sql_id};
+        my $report = Koha::Reports->find($saved_sql_id);
+        next unless $report;
+
+        seed_report_av( $self, $def->{group}, $def->{subgroup} );
+
+        my $text = resolve_text( $def, $lang->{code} );
+        $report->report_name( $text->{name} );
+        $report->notes( $text->{description} );
+        $report->report_group( $def->{group} ne q{} ? $def->{group} : undef );
+        $report->report_subgroup( $def->{subgroup} ne q{} ? $def->{subgroup} : undef );
+        $report->last_modified( Koha::DateUtils::dt_from_string );
+        $report->store;
+
+        set_mapping(
+            $self, $def->{code}, $saved_sql_id,
+            {
+                language           => $lang->{code},
+                canonical_sql_hash => sql_hash( $def->{sql} ),
+                deployed_sql_hash  => sql_hash( $report->savedsql // q{} ),
+            }
+        );
+        $updated++;
+    }
+
+    return $updated;
+}
+
 =head2 deploy_available
 
 Auto-deploy every non-public report that has not been seen before (neither

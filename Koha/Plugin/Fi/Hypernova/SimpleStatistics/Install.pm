@@ -72,6 +72,7 @@ sub upgrade {
                 "koha-plugin-simple-statistics: auto-deployed " . scalar(@$deployed) . " report(s)" );
         }
 
+        Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::sync_report_metadata( $self, undef );
         Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::prune_mappings($self);
         _register_methods($self);
         _store_last_upgraded($self);
