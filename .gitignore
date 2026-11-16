@@ -47,3 +47,8 @@ dist/
 # Editor swap files
 *.swp
 .*.swp
+
+# Release artifacts produced by build.sh (checksums + provenance manifest)
+*.kpz.sha256
+*.kpz.sha512
+*.kpz.buildinfo
