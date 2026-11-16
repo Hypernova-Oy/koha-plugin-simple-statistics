@@ -128,16 +128,32 @@ my $bad = bless {}, 'BadPlugin';
 Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store::load_definitions($bad);
 like( $warnings, qr/bogus_key/, 'unknown key warns' );
 
-# --- sync_report_metadata updates group/subgroup/name, keeps SQL ---
-$dbh->do( "UPDATE saved_sql SET report_group = 'X', report_subgroup = 'Y' WHERE id = ?", undef, $id );
+# --- sync_report_metadata only syncs unmodified reports ---
+# Case 1: a report with a NULL metadata baseline (pre-tracking) is migrated.
+$dbh->do( "UPDATE saved_sql SET report_group = 'OldGroup' WHERE id = ?", undef, $id );
+$dbh->do( "UPDATE ss_imptest_report_mappings SET deployed_metadata_hash = NULL WHERE code = 'demo'" );
 my $synced = $sync->( $fake, undef );
-is( $synced, 1, 'sync updates one report' );
-my ( $rg, $rsg, $rname, $rsql ) = $dbh->selectrow_array(
-    "SELECT report_group, report_subgroup, report_name, savedsql FROM saved_sql WHERE id = ?", undef, $id );
+is( $synced, 1, 'sync migrates a report with no metadata baseline' );
+my ( $rg, $rsg, $rname ) = $dbh->selectrow_array(
+    "SELECT report_group, report_subgroup, report_name FROM saved_sql WHERE id = ?", undef, $id );
 is( $rg,  'TestGroup',    'sync restores report_group' );
 is( $rsg, 'TestSubgroup', 'sync restores report_subgroup' );
 is( $rname, 'Demo',       'sync restores report name' );
-is( $rsql, 'SELECT 1',    'sync keeps SQL intact' );
+
+# Case 2: a report whose SQL the librarian edited is left untouched.
+$dbh->do( "UPDATE saved_sql SET savedsql = 'SELECT 999' WHERE id = ?", undef, $id );
+$synced = $sync->( $fake, undef );
+is( $synced, 0, 'sync skips a report with edited SQL' );
+my ($rsql) = $dbh->selectrow_array( "SELECT savedsql FROM saved_sql WHERE id = ?", undef, $id );
+is( $rsql, 'SELECT 999', 'edited SQL preserved' );
+$dbh->do( "UPDATE saved_sql SET savedsql = 'SELECT 1' WHERE id = ?", undef, $id );
+
+# Case 3: a report whose metadata the librarian edited is left untouched.
+$dbh->do( "UPDATE saved_sql SET report_name = 'Edited' WHERE id = ?", undef, $id );
+$synced = $sync->( $fake, undef );
+is( $synced, 0, 'sync skips a report with edited metadata' );
+my ($rname2) = $dbh->selectrow_array( "SELECT report_name FROM saved_sql WHERE id = ?", undef, $id );
+is( $rname2, 'Edited', 'edited metadata preserved' );
 
 # --- cleanup ---
 $dbh->do( "DELETE FROM saved_sql WHERE id = ?", undef, $id );

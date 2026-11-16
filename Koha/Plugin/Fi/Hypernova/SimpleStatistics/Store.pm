@@ -20,6 +20,7 @@ package Koha::Plugin::Fi::Hypernova::SimpleStatistics::Store;
 use Modern::Perl;
 
 use Digest::SHA qw(sha256_hex);
+use Encode qw(encode_utf8);
 use Algorithm::Diff qw(diff);
 use YAML::XS   qw(Load);
 
@@ -79,6 +80,7 @@ sub create_mapping_table {
             `language`           varchar(32)  DEFAULT NULL,
             `canonical_sql_hash` varchar(64)  DEFAULT NULL,
             `deployed_sql_hash`  varchar(64)  DEFAULT NULL,
+            `deployed_metadata_hash` varchar(64) DEFAULT NULL,
             PRIMARY KEY (`code`),
             KEY `saved_sql_id` (`saved_sql_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -93,6 +95,9 @@ sub create_mapping_table {
     }
     unless ( _column_exists( $dbh, $table, 'deployed_sql_hash' ) ) {
         $dbh->do("ALTER TABLE `$table` ADD COLUMN `deployed_sql_hash` varchar(64) DEFAULT NULL AFTER `canonical_sql_hash`");
+    }
+    unless ( _column_exists( $dbh, $table, 'deployed_metadata_hash' ) ) {
+        $dbh->do("ALTER TABLE `$table` ADD COLUMN `deployed_metadata_hash` varchar(64) DEFAULT NULL AFTER `deployed_sql_hash`");
     }
 
     return $table;
@@ -181,7 +186,7 @@ sub get_mappings {
     my $dbh   = C4::Context->dbh;
     my $table = mapping_table($self);
     my $rows  = $dbh->selectall_arrayref(
-        "SELECT code, saved_sql_id, deployed_on, language, canonical_sql_hash, deployed_sql_hash FROM `$table`",
+        "SELECT code, saved_sql_id, deployed_on, language, canonical_sql_hash, deployed_sql_hash, deployed_metadata_hash FROM `$table`",
         { Slice => {} }
     );
     my %map;
@@ -202,9 +207,9 @@ sub set_mapping {
     my $dbh   = C4::Context->dbh;
     my $table = mapping_table($self);
     $dbh->do(
-        "REPLACE INTO `$table` (code, saved_sql_id, language, canonical_sql_hash, deployed_sql_hash) VALUES (?,?,?,?,?)",
+        "REPLACE INTO `$table` (code, saved_sql_id, language, canonical_sql_hash, deployed_sql_hash, deployed_metadata_hash) VALUES (?,?,?,?,?,?)",
         undef, $code, $saved_sql_id,
-        $meta->{language}, $meta->{canonical_sql_hash}, $meta->{deployed_sql_hash}
+        $meta->{language}, $meta->{canonical_sql_hash}, $meta->{deployed_sql_hash}, $meta->{deployed_metadata_hash}
     );
 }
 
@@ -296,6 +301,19 @@ and trailing semicolons.
 sub sql_hash {
     my ($sql) = @_;
     return sha256_hex( _normalize_sql($sql) );
+}
+
+=head2 metadata_hash
+
+Return a SHA-256 hex digest over a report's name, notes, group and subgroup,
+used to detect librarian edits to those fields.
+
+=cut
+
+sub metadata_hash {
+    my ( $name, $notes, $group, $subgroup ) = @_;
+    my @parts = map { encode_utf8( defined $_ ? $_ : q{} ) } ( $name, $notes, $group, $subgroup );
+    return sha256_hex( join "\x1f", @parts );
 }
 
 =head2 sql_diff
@@ -438,9 +456,14 @@ sub deploy_report {
     set_mapping(
         $self, $code, $id,
         {
-            language           => $lang->{code},
-            canonical_sql_hash => sql_hash( $def->{sql} ),
-            deployed_sql_hash  => sql_hash($sql),
+            language               => $lang->{code},
+            canonical_sql_hash     => sql_hash( $def->{sql} ),
+            deployed_sql_hash      => sql_hash($sql),
+            deployed_metadata_hash => metadata_hash(
+                $text->{name}, $text->{description},
+                ( $def->{group} ne q{} ? $def->{group} : undef ),
+                ( $def->{subgroup} ne q{} ? $def->{subgroup} : undef ),
+            ),
         }
     );
 
@@ -491,9 +514,14 @@ sub update_report {
     set_mapping(
         $self, $code, $saved_sql_id,
         {
-            language           => $lang->{code},
-            canonical_sql_hash => sql_hash( $def->{sql} ),
-            deployed_sql_hash  => sql_hash($sql),
+            language               => $lang->{code},
+            canonical_sql_hash     => sql_hash( $def->{sql} ),
+            deployed_sql_hash      => sql_hash($sql),
+            deployed_metadata_hash => metadata_hash(
+                $text->{name}, $text->{description},
+                ( $def->{group} ne q{} ? $def->{group} : undef ),
+                ( $def->{subgroup} ne q{} ? $def->{subgroup} : undef ),
+            ),
         }
     );
 
@@ -519,26 +547,51 @@ sub sync_report_metadata {
     my $updated = 0;
     for my $def (@$defs) {
         next unless exists $mappings->{ $def->{code} };
-        my $saved_sql_id = $mappings->{ $def->{code} }{saved_sql_id};
+        my $m = $mappings->{ $def->{code} };
+        my $saved_sql_id = $m->{saved_sql_id};
         my $report = Koha::Reports->find($saved_sql_id);
         next unless $report;
+
+        my $current_sql  = $report->savedsql // q{};
+        my $current_meta = metadata_hash(
+            $report->report_name,
+            $report->notes,
+            $report->report_group // q{},
+            $report->report_subgroup // q{},
+        );
+
+        # Only sync reports the librarian has not modified. A NULL baseline
+        # means the report was deployed before tracking existed; treat it as
+        # unmodified so a one-time migration can update it.
+        my $sql_edited = defined $m->{deployed_sql_hash}
+            ? ( sql_hash($current_sql) ne $m->{deployed_sql_hash} )
+            : 0;
+        my $meta_edited = defined $m->{deployed_metadata_hash}
+            ? ( $current_meta ne $m->{deployed_metadata_hash} )
+            : 0;
+
+        next if $sql_edited || $meta_edited;
+
+        my $group    = $def->{group} ne q{} ? $def->{group} : undef;
+        my $subgroup = $def->{subgroup} ne q{} ? $def->{subgroup} : undef;
 
         seed_report_av( $self, $def->{group}, $def->{subgroup} );
 
         my $text = resolve_text( $def, $lang->{code} );
         $report->report_name( $text->{name} );
         $report->notes( $text->{description} );
-        $report->report_group( $def->{group} ne q{} ? $def->{group} : undef );
-        $report->report_subgroup( $def->{subgroup} ne q{} ? $def->{subgroup} : undef );
+        $report->report_group($group);
+        $report->report_subgroup($subgroup);
         $report->last_modified( Koha::DateUtils::dt_from_string );
         $report->store;
 
         set_mapping(
             $self, $def->{code}, $saved_sql_id,
             {
-                language           => $lang->{code},
-                canonical_sql_hash => sql_hash( $def->{sql} ),
-                deployed_sql_hash  => sql_hash( $report->savedsql // q{} ),
+                language               => $lang->{code},
+                canonical_sql_hash     => sql_hash( $def->{sql} ),
+                deployed_sql_hash      => sql_hash($current_sql),
+                deployed_metadata_hash => metadata_hash( $text->{name}, $text->{description}, $group, $subgroup ),
             }
         );
         $updated++;
